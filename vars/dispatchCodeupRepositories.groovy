@@ -18,7 +18,7 @@ def call(Map config = [:]) {
     boolean dryRun = config.dryRun == true
     boolean failAtEnd = config.failAtEnd == true
 
-    Set<String> allowedMethods = ((config.allowedMethods ?: ['deployJavaWeb']) as Collection).collect { Object item ->
+    Set<String> allowedMethods = ((config.allowedMethods ?: ['deployJavaWeb', 'deployWeb']) as Collection).collect { Object item ->
         return item.toString()
     } as Set<String>
     boolean hasAllowedRepositoryNames = config.containsKey('allowedRepositoryNames')
@@ -33,7 +33,8 @@ def call(Map config = [:]) {
     }
 
     def whitelist = [
-            deployJavaWeb: { Map customConfig -> deployJavaWeb(customConfig) }
+            deployJavaWeb: { Map customConfig -> deployJavaWeb(customConfig) },
+            deployWeb    : { Map customConfig -> deployWeb(customConfig) }
     ]
     Set<String> unsupportedMethods = allowedMethods.findAll { String methodName ->
         return !whitelist.containsKey(methodName)

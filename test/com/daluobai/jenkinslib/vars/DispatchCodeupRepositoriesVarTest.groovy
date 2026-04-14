@@ -49,6 +49,37 @@ class DispatchCodeupRepositoriesVarTest {
     }
 
     @Test
+    void dispatchCodeupRepositoriesDispatchesDeployWebByDefault() {
+        stubCodeupApi(
+                [[id: '1', name: 'repo-a']],
+                [
+                        '1': [[name: 'Jenkinsfile.groovy', path: 'Jenkinsfile.groovy', type: 'blob']]
+                ],
+                [
+                        '1:Jenkinsfile.groovy': """
+                                def customConfig = [SHARE_PARAM: [appName: 'repo-a']]
+                                deployWeb(customConfig)
+                                """.stripIndent()
+                ]
+        )
+
+        GroovyShell shell = new GroovyShell(CodeupApi.class.classLoader)
+        Script script = shell.parse(new File('vars/dispatchCodeupRepositories.groovy'))
+        List<Map<String, Object>> dispatchedConfigs = []
+        script.metaClass.echo = { Object message -> }
+        script.metaClass.deployWeb = { Map customConfig -> dispatchedConfigs.add(customConfig) }
+
+        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id']] as Object[])
+
+        assertEquals(1, result.scannedRepositories)
+        assertEquals(1, result.scannedFiles)
+        assertEquals(1, result.dispatched)
+        assertTrue(result.rejected.isEmpty())
+        assertTrue(result.failed.isEmpty())
+        assertEquals('repo-a', dispatchedConfigs[0].SHARE_PARAM.appName)
+    }
+
+    @Test
     void dispatchCodeupRepositoriesContinuesWhenRepositoryFails() {
         stubCodeupApi(
                 [[id: '1', name: 'repo-a'], [id: '2', name: 'repo-b']],
@@ -80,7 +111,7 @@ class DispatchCodeupRepositoriesVarTest {
     }
 
     @Test
-    void dispatchCodeupRepositoriesRejectsUnsupportedRemoteJenkinsfileAndContinues() {
+    void dispatchCodeupRepositoriesRejectsMethodOutsideExplicitAllowedMethodsAndContinues() {
         stubCodeupApi(
                 [[id: '1', name: 'repo-a'], [id: '2', name: 'repo-b']],
                 [
@@ -105,7 +136,7 @@ class DispatchCodeupRepositoriesVarTest {
         script.metaClass.echo = { Object message -> }
         script.metaClass.deployJavaWeb = { Map customConfig -> dispatchedConfigs.add(customConfig) }
 
-        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id']] as Object[])
+        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id', allowedMethods: ['deployJavaWeb']]] as Object[])
 
         assertEquals(2, result.scannedRepositories)
         assertEquals(2, result.scannedFiles)
