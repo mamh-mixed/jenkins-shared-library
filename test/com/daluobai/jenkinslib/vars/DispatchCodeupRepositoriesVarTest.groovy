@@ -184,6 +184,45 @@ class DispatchCodeupRepositoriesVarTest {
     }
 
     @Test
+    void dispatchCodeupRepositoriesFiltersByConfiguredJenkinsfileName() {
+        stubCodeupApi(
+                [[id: '1', name: 'repo-a']],
+                [
+                        '1': [
+                                [name: 'Jenkinsfile.groovy', path: 'Jenkinsfile.groovy', type: 'blob'],
+                                [name: 'Jenkinsfile.release.groovy', path: 'ci/Jenkinsfile.release.groovy', type: 'blob']
+                        ]
+                ],
+                [
+                        '1:Jenkinsfile.groovy'           : """
+                                def customConfig = [SHARE_PARAM: [appName: 'default-pipeline']]
+                                deployJavaWeb(customConfig)
+                                """.stripIndent(),
+                        '1:ci/Jenkinsfile.release.groovy': """
+                                def customConfig = [SHARE_PARAM: [appName: 'release-pipeline']]
+                                deployJavaWeb(customConfig)
+                                """.stripIndent()
+                ]
+        )
+
+        GroovyShell shell = new GroovyShell(CodeupApi.class.classLoader)
+        Script script = shell.parse(new File('vars/dispatchCodeupRepositories.groovy'))
+        List<Map<String, Object>> dispatchedConfigs = []
+        script.metaClass.echo = { Object message -> }
+        script.metaClass.deployJavaWeb = { Map customConfig -> dispatchedConfigs.add(customConfig) }
+
+        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id', jenkinsfileName: 'Jenkinsfile.release.groovy']] as Object[])
+
+        assertEquals(1, result.scannedRepositories)
+        assertEquals(1, result.scannedFiles)
+        assertEquals(1, result.dispatched)
+        assertTrue(result.rejected.isEmpty())
+        assertTrue(result.failed.isEmpty())
+        assertEquals(1, dispatchedConfigs.size())
+        assertEquals('release-pipeline', dispatchedConfigs[0].SHARE_PARAM.appName)
+    }
+
+    @Test
     void dispatchCodeupRepositoriesSkipsAllWhenAllowedRepositoryNamesIsEmpty() {
         stubCodeupApi(
                 [[id: '1', name: 'repo-a']],

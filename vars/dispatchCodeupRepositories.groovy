@@ -3,7 +3,8 @@ import com.daluobai.jenkinslib.codeup.JenkinsfileInvocationParser
 import com.daluobai.jenkinslib.utils.AssertUtils
 
 /**
- * 扫描 Codeup 仓库中的 Jenkinsfile.groovy，并执行允许的方法。
+ * 扫描 Codeup 仓库中的 Jenkinsfile，并执行允许的方法。
+ * jenkinsfileName 可选，按文件名匹配，默认 Jenkinsfile.groovy；
  * allowedRepositoryNames 可选，必须是仓库名称集合（按 Codeup 返回的 repository.name 过滤）；
  * 不传时处理全部仓库，传空集合时全部跳过。
  */
@@ -15,6 +16,7 @@ def call(Map config = [:]) {
     String organizationId = config.organizationId.toString()
     String domain = config.domain?.toString() ?: CodeupApi.DEFAULT_DOMAIN
     String ref = config.ref?.toString() ?: 'master'
+    String jenkinsfileName = config.jenkinsfileName?.toString()?.trim() ?: 'Jenkinsfile.groovy'
     boolean dryRun = config.dryRun == true
     boolean failAtEnd = config.failAtEnd == true
 
@@ -67,7 +69,7 @@ def call(Map config = [:]) {
         }
         return allowed
     }.each { Map<String, Object> repository ->
-        processRepository(repository, codeupApi, parser, whitelist, allowedMethods, domain, token, organizationId, ref, dryRun, summary)
+        processRepository(repository, codeupApi, parser, whitelist, allowedMethods, domain, token, organizationId, ref, jenkinsfileName, dryRun, summary)
     }
 
     if (failAtEnd && (!summary.failed.isEmpty() || !summary.rejected.isEmpty())) {
@@ -85,6 +87,7 @@ private void processRepository(Map<String, Object> repository,
                                String token,
                                String organizationId,
                                String ref,
+                               String jenkinsfileName,
                                boolean dryRun,
                                Map summary) {
     String repositoryId = repository.id?.toString()
@@ -96,7 +99,7 @@ private void processRepository(Map<String, Object> repository,
             String name = fileItem.name?.toString()
             String path = fileItem.path?.toString()
             String type = fileItem.type?.toString()
-            boolean fileMatches = name == 'Jenkinsfile.groovy' || path?.endsWith('/Jenkinsfile.groovy') || path == 'Jenkinsfile.groovy'
+            boolean fileMatches = name == jenkinsfileName || path?.endsWith("/${jenkinsfileName}") || path == jenkinsfileName
             boolean notDirectory = type == null || type != 'tree'
             return fileMatches && notDirectory
         }

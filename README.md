@@ -119,3 +119,4 @@ dispatchCodeupRepositories(
 ```
 
 `allowedRepositoryNames` 可选，按 Codeup 返回的 `repository.name` 过滤；不传时处理全部仓库，传空集合时全部跳过。
+`jenkinsfileName` 可选，按 Jenkinsfile 文件名过滤；不传时默认处理 `Jenkinsfile.groovy`。完整配置示例见 `configdemo/dispatchCodeupRepositories.groovy`。
