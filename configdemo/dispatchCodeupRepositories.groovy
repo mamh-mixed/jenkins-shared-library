@@ -10,7 +10,7 @@ dispatchCodeupRepositories(
         // 扫描分支，可不填，默认 master
         ref: 'master',
         // 指定要扫描和分发的 Jenkinsfile 文件名，可不填，默认 Jenkinsfile.groovy
-        jenkinsfileName: 'Jenkinsfile.release.groovy',
+        jenkinsfileName: 'Jenkinsfile.groovy',
         // 只处理指定仓库名称，可不填；不传时处理全部仓库，传空集合时全部跳过
         allowedRepositoryNames: ['repo-a', 'repo-b'],
         // 允许分发的方法，可不填，默认 deployJavaWeb 和 deployWeb
