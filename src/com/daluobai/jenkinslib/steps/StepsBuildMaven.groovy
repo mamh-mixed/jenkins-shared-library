@@ -93,6 +93,8 @@ class StepsBuildMaven implements Serializable {
                         mkdir -p ${pathBase}/${pathPackage} && mkdir -p ${pathBase}/${pathCode}/${pathCode}
                         git config --global http.version HTTP/1.1
                     """
+                // 使用 Jenkins checkout 才会写入 currentBuild.changeSets，构建记录的 Changes 页面才能显示项目提交历史。
+                // checkout 目录保持为 code/code，避免影响后续 Maven 构建和 target 产物复制路径。
                 steps.dir("${pathBase}/${pathCode}/${pathCode}") {
                     steps.checkout(changelog: true, poll: false, scm: [
                             $class           : 'GitSCM',
@@ -114,6 +116,7 @@ class StepsBuildMaven implements Serializable {
         }
     }
 
+    // SSH 仓库默认沿用共享库历史约定的 ssh-git 凭据；如需覆盖，可在 stepsBuildMaven.credentialsId 显式指定。
     private Map gitUserRemoteConfig(def configSteps) {
         def remoteConfig = [url: "${configSteps.gitUrl}".toString()]
         def credentialsId = StrUtils.isNotBlank(configSteps.credentialsId) ? configSteps.credentialsId : defaultGitCredentialsId("${configSteps.gitUrl}")
@@ -123,6 +126,7 @@ class StepsBuildMaven implements Serializable {
         return remoteConfig
     }
 
+    // HTTPS/HTTP 仓库不强行附带凭据，避免破坏公开仓库或已有匿名访问配置。
     private String defaultGitCredentialsId(String gitUrl) {
         if (StrUtils.isBlank(gitUrl)) {
             return ""
