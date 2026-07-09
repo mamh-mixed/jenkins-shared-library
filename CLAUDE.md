@@ -42,27 +42,3 @@ This project is indexed by GitNexus as **jenkins-shared-library** (154 symbols, 
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
-
-<!-- gitnexus-init-wiki:start -->
-## GitNexus / Project Wiki
-
-This repository is indexed with GitNexus and has a project wiki generated from GitNexus MCP graph context.
-
-For architecture questions, onboarding, debugging, refactoring, impact analysis,
-or cross-module changes, use GitNexus MCP/tools and the project wiki before
-making assumptions from plain text search.
-
-Project wiki entry:
-- `docs/wiki/README.md`
-
-How to use it:
-- Start with the wiki entry page for architecture and module overview.
-- Read module-specific wiki pages only when the task touches that module.
-- Treat wiki pages as orientation docs, not the final source of truth.
-- Verify implementation details against source code and GitNexus graph results.
-- Before editing important symbols, run GitNexus impact/context analysis when available.
-- If GitNexus reports a stale index, run `gitnexus analyze` before relying on graph results.
-- GitNexus may refresh its native `AGENTS.md` context block whenever `gitnexus analyze` runs.
-- This workflow does not retain GitNexus-generated or GitNexus-modified `CLAUDE.md` unless explicitly requested.
-- After major architecture, module-boundary, or core-flow changes, refresh the index and regenerate this wiki through GitNexus MCP.
-<!-- gitnexus-init-wiki:end -->
