@@ -89,11 +89,20 @@ class StepsBuildMaven implements Serializable {
                 }
                 steps.sh """
                         #! /bin/sh -e
-                        mkdir -p ${pathBase}/${pathPackage} && mkdir -p ${pathBase}/${pathCode}
-                        cd ${pathBase}/${pathCode} && rm -rf *
+                        rm -rf ${pathBase}/${pathCode}/${pathCode}
+                        mkdir -p ${pathBase}/${pathPackage} && mkdir -p ${pathBase}/${pathCode}/${pathCode}
                         git config --global http.version HTTP/1.1
-                        GIT_SSH_COMMAND='ssh -i ${steps.env.WORKSPACE}/${pathSSHKey}/ssh-git/id_rsa' git clone ${configSteps.gitUrl} --branch ${configSteps.gitBranch} --single-branch --depth 1 --quiet
-                        mv ${pathBase}/${pathCode}/\$(ls -A1 ${pathBase}/${pathCode}/) ${pathBase}/${pathCode}/${pathCode}
+                    """
+                steps.dir("${pathBase}/${pathCode}/${pathCode}") {
+                    steps.checkout(changelog: true, poll: false, scm: [
+                            $class           : 'GitSCM',
+                            branches         : [[name: "${configSteps.gitBranch}".toString()]],
+                            userRemoteConfigs: [gitUserRemoteConfig(configSteps)],
+                            extensions       : [[$class: 'CleanBeforeCheckout']]
+                    ])
+                }
+                steps.sh """
+                        #! /bin/sh -e
                         cd ${pathBase}/${pathCode}/${pathCode}
                         git log --pretty=format:"%h -%an,%ar : %s" -1
                         git config core.ignorecase false
@@ -103,5 +112,21 @@ class StepsBuildMaven implements Serializable {
                     """
             }
         }
+    }
+
+    private Map gitUserRemoteConfig(def configSteps) {
+        def remoteConfig = [url: "${configSteps.gitUrl}".toString()]
+        def credentialsId = StrUtils.isNotBlank(configSteps.credentialsId) ? configSteps.credentialsId : defaultGitCredentialsId("${configSteps.gitUrl}")
+        if (StrUtils.isNotBlank(credentialsId)) {
+            remoteConfig.credentialsId = credentialsId
+        }
+        return remoteConfig
+    }
+
+    private String defaultGitCredentialsId(String gitUrl) {
+        if (StrUtils.isBlank(gitUrl)) {
+            return ""
+        }
+        return gitUrl.startsWith("git@") || gitUrl.startsWith("ssh://") ? "ssh-git" : ""
     }
 }
