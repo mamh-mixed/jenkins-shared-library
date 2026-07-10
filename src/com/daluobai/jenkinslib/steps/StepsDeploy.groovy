@@ -61,7 +61,7 @@ class StepsDeploy implements Serializable {
                     if (ObjUtils.isNotEmpty(parameterMap.stepsJavaWebDeployToService)) {
                         stepsJavaWeb.deploy(parameterMap.stepsJavaWebDeployToService)
                     } else if (ObjUtils.isNotEmpty(parameterMap.stepsTomcatDeploy)) {
-                        stepsTomcat.deploy(parameterMap.stepsJavaWebDeployToTomcat)
+                        stepsTomcat.deploy(parameterMap.stepsTomcatDeploy)
                     }
                     //健康检查
                     if (readinessProbeMap != null) {

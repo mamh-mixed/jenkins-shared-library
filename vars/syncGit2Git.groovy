@@ -44,7 +44,7 @@ def call(Map customConfig) {
     node(nodeBuildNodeList[0]) {
         try {
             //获取并合并配置
-            stage("${it}") {
+            stage("执行流程") {
                 echo "开始执行流程: ${it}"
                 stepsGit.syncGit2Git(customConfig["orgGitUrl"], customConfig["orgCredentialsId"], customConfig["targetGitUrl"], customConfig["targetCredentialsId"])
             }
