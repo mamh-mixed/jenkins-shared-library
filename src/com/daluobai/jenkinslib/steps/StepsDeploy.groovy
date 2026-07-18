@@ -1,6 +1,5 @@
 package com.daluobai.jenkinslib.steps
 
-@Grab('org.reflections:reflections:0.9.9-RC1')
 import com.daluobai.jenkinslib.utils.DateUtils
 import com.daluobai.jenkinslib.utils.AssertUtils
 import com.daluobai.jenkinslib.utils.ObjUtils
@@ -29,22 +28,26 @@ class StepsDeploy implements Serializable {
 
     //发布
     def deploy(Map parameterMap) {
-        steps.echo "StepsJavaWeb:${parameterMap}"
+        steps.echo "开始执行Java Web部署编排"
         AssertUtils.notEmpty(parameterMap, "参数为空")
         def labels = parameterMap.labels
-        def enable = parameterMap.enable
         def readinessProbeMap = parameterMap.readinessProbe
         def afterRunCMD = parameterMap.afterRunCMD
         def globalParameterMap = steps.globalParameterMap
-        def appName = globalParameterMap.SHARE_PARAM.appName
-        def archiveName = globalParameterMap.SHARE_PARAM.archiveName
-        //获取文件名后缀
-        def archiveSuffix = StrUtils.subAfter(archiveName, ".", true)
-        //获取文件名
-        def archiveOnlyName = StrUtils.subBefore(archiveName, ".", true)
         AssertUtils.notEmpty(labels, "labels为空")
-
-        def backAppName = "app-" + DateUtils.format(new Date(), "yyyyMMddHHmmss") + "." + archiveSuffix
+        if (globalParameterMap.DEPLOY_PIPELINE?.stepsStorage?.jenkinsStash?.enable != true) {
+            steps.error '文件部署要求DEPLOY_PIPELINE.stepsStorage.jenkinsStash.enable=true'
+        }
+        Map javaDeployConfig = parameterMap.stepsJavaWebDeployToService as Map
+        Map tomcatDeployConfig = parameterMap.stepsTomcatDeploy as Map
+        boolean javaDeployEnabled = ObjUtils.isNotEmpty(javaDeployConfig) && javaDeployConfig.enable != false
+        boolean tomcatDeployEnabled = ObjUtils.isNotEmpty(tomcatDeployConfig) && tomcatDeployConfig.enable != false
+        if (javaDeployEnabled && tomcatDeployEnabled) {
+            steps.error 'stepsJavaWebDeployToService与stepsTomcatDeploy不能同时启用'
+        }
+        if (!javaDeployEnabled && !tomcatDeployEnabled) {
+            steps.error '没有启用任何Java Web部署方式'
+        }
 
         labels.each { c ->
             def label = c
@@ -58,10 +61,10 @@ class StepsDeploy implements Serializable {
                 def nodeDeployNode = d
                 steps.echo "开始发布:${nodeDeployNode}"
                 steps.node(nodeDeployNode) {
-                    if (ObjUtils.isNotEmpty(parameterMap.stepsJavaWebDeployToService)) {
-                        stepsJavaWeb.deploy(parameterMap.stepsJavaWebDeployToService)
-                    } else if (ObjUtils.isNotEmpty(parameterMap.stepsTomcatDeploy)) {
-                        stepsTomcat.deploy(parameterMap.stepsTomcatDeploy)
+                    if (javaDeployEnabled) {
+                        stepsJavaWeb.deploy(javaDeployConfig)
+                    } else {
+                        stepsTomcat.deploy(tomcatDeployConfig)
                     }
                     //健康检查
                     if (readinessProbeMap != null) {

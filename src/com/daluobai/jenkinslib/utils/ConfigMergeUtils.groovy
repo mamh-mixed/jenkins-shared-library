@@ -99,7 +99,7 @@ class ConfigMergeUtils implements Serializable {
             current = current[part]
         }
         
-        return current ?: defaultValue
+        return current != null ? current : defaultValue
     }
 
     /**

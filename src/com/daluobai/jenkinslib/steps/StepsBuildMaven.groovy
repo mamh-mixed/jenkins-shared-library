@@ -34,6 +34,9 @@ class StepsBuildMaven implements Serializable {
         AssertUtils.notNull(configDefault, "DEFAULT_CONFIG为空")
         AssertUtils.notNull(configShare, "SHARE_PARAM为空")
         AssertUtils.notNull(configSteps, "DEPLOY_PIPELINE.stepsBuildMaven为空")
+        AssertUtils.notBlank(configSteps.gitUrl?.toString(), "gitUrl为空")
+        AssertUtils.notBlank(configSteps.gitBranch?.toString(), "gitBranch为空")
+        AssertUtils.notBlank(configSteps.lifecycle?.toString(), "lifecycle为空")
 
         def pathBase = "${steps.env.WORKSPACE}"
         //docker-构建产物目录
@@ -74,15 +77,20 @@ class StepsBuildMaven implements Serializable {
             def mavenImage = steps.docker.image("${dockerBuildImageUrl}")
             mavenImage.pull()
 
-            def mvnCMDSubMod = "-pl ${configSteps.subModule} -am -amd"
+            boolean hasSubModule = StrUtils.isNotBlank(configSteps.subModule?.toString())
+            def mvnCMDSubMod = hasSubModule ? "-pl ${configSteps.subModule} -am -amd" : ""
             def mvnCMDActiveProfile = StrUtils.isNotEmpty(configSteps.activeProfile) ? "-P ${configSteps.activeProfile}" : ""
+            def targetPath = hasSubModule ?
+                    "${pathBase}/${pathCode}/${pathCode}/${configSteps.subModule}/target" :
+                    "${pathBase}/${pathCode}/${pathCode}/target"
 
             //这里默认会把工作空间挂载到容器中的${steps.env.WORKSPACE}目录
             mavenImage.inside("--entrypoint '' -v maven-repo:/root/.m2/repository") {
-                //从 jenkins 凭据管理中获取密钥文件路径并且拷贝到工作目录下的ssh-git目录，后面clone的时候指定密钥为这个
-                stepsGit.saveJenkinsSSHKey('ssh-git',"${steps.env.WORKSPACE}/${pathSSHKey}/ssh-git")
-                //生成known_hosts
-                stepsGit.sshKeyscan("${configSteps.gitUrl}", "~/.ssh/known_hosts")
+                if (isSshGitUrl(configSteps.gitUrl?.toString())) {
+                    String credentialsId = StrUtils.isNotBlank(configSteps.credentialsId) ? configSteps.credentialsId : "ssh-git"
+                    stepsGit.saveJenkinsSSHKey(credentialsId,"${steps.env.WORKSPACE}/${pathSSHKey}/ssh-git")
+                    stepsGit.sshKeyscan("${configSteps.gitUrl}", "~/.ssh/known_hosts")
+                }
                 //如果有settings.xml配置则写入用户自定义配置.
                 if (StrUtils.isNotBlank(settingsXmlStr)){
                     fileUtils.writeFileBySH("~/.m2/settings.xml", settingsXmlStr)
@@ -109,8 +117,8 @@ class StepsBuildMaven implements Serializable {
                         git log --pretty=format:"%h -%an,%ar : %s" -1
                         git config core.ignorecase false
                         mvn -Dmaven.test.skip=${configSteps.skipTest} ${configSteps.lifecycle} -Dmaven.compile.fork=true -U -B ${mvnCMDSubMod} ${mvnCMDActiveProfile}
-                        ls -al ${pathBase}/${pathCode}/${pathCode}/${configSteps.subModule}/target
-                        cp -r ${pathBase}/${pathCode}/${pathCode}/${configSteps.subModule}/target/* ${pathBase}/${pathPackage}/
+                        ls -al ${targetPath}
+                        cp -r ${targetPath}/* ${pathBase}/${pathPackage}/
                     """
             }
         }
@@ -132,5 +140,9 @@ class StepsBuildMaven implements Serializable {
             return ""
         }
         return gitUrl.startsWith("git@") || gitUrl.startsWith("ssh://") ? "ssh-git" : ""
+    }
+
+    private static boolean isSshGitUrl(String gitUrl) {
+        return StrUtils.isNotBlank(gitUrl) && (gitUrl.startsWith("git@") || gitUrl.startsWith("ssh://"))
     }
 }

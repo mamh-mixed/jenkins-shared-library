@@ -35,20 +35,18 @@ class WecomApi implements Serializable {
         ]
 
         String paramsStr = JsonUtils.toJsonStr(paramMap);
-        String response = ""
         try {
-            response = HttpUtils.HttpRequest.post("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key="+chatToken)
+            String response = HttpUtils.HttpRequest.post("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key="+chatToken)
                     .contentType("application/json;charset=utf-8").body(paramsStr).execute().body()
+            if (StrUtils.isBlank(response)){
+                return false
+            }
+            Map<String, Object> responseJson = JsonUtils.parseObj(response)
+            Object errcode = responseJson.get("errcode")
+            return errcode != null && Integer.parseInt(errcode.toString()) == 0
         } catch (Exception e) {
-            e.printStackTrace();
-        }
-        if (StrUtils.isBlank(response)){
+            steps?.echo "企业微信通知发送失败: ${e.class.simpleName}"
             return false
         }
-        def responseJson = JsonUtils.parseObj(response)
-
-        Boolean ok = responseJson.getBool("ok")
-        return !(ok == null || !ok)
-
     }
 }

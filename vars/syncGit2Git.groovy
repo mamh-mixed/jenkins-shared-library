@@ -22,9 +22,7 @@ import com.daluobai.jenkinslib.utils.ConfigMergeUtils
 def call(Map customConfig) {
 
     /*******************初始化全局对象 开始*****************/
-    def stepsBuildNpm = new StepsBuildNpm(this)
     def stepsJenkins = new StepsJenkins(this)
-    def stepsWeb = new StepsWeb(this)
     def messageUtils = new MessageUtils(this)
     def stepsGit = new StepsGit(this)
     /*******************初始化全局对象 结束*****************/
@@ -45,10 +43,16 @@ def call(Map customConfig) {
         try {
             //获取并合并配置
             stage("执行流程") {
-                echo "开始执行流程: ${it}"
-                stepsGit.syncGit2Git(customConfig["orgGitUrl"], customConfig["orgCredentialsId"], customConfig["targetGitUrl"], customConfig["targetCredentialsId"])
+                echo "开始执行流程: syncGit2Git"
+                stepsGit.syncGit2Git(
+                        customConfig["orgGitUrl"],
+                        customConfig["orgCredentialsId"],
+                        customConfig["targetGitUrl"],
+                        customConfig["targetCredentialsId"],
+                        customConfig["mirrorAllRefs"] == true
+                )
             }
-            echo "结束执行流程: ${it}"
+            echo "结束执行流程: syncGit2Git"
             eBuildStatusType = EBuildStatusType.SUCCESS
         } catch (Exception e) {
             if (e.getClass().getName() == 'org.jenkinsci.plugins.workflow.steps.FlowInterruptedException') {
@@ -59,7 +63,7 @@ def call(Map customConfig) {
             }
             throw e
         } finally {
-            if (ObjUtils.isNotEmpty(customConfig.SHARE_PARAM.message)) {
+            if (ObjUtils.isNotEmpty(customConfig.SHARE_PARAM?.message)) {
                 def messageTitle = ""
                 def messageContent = ""
                 if (eBuildStatusType == EBuildStatusType.SUCCESS) {
@@ -102,18 +106,14 @@ def mergeConfig(Map customConfig) {
     def defaultConfig = [:]
     //读取默认配置文件
     defaultConfig = new ConfigUtils(this).readConfig(EFileReadType.RESOURCES, defaultConfigPath(EFileReadType.RESOURCES))
-    echo "customConfig: ${customConfig.toString()}"
-    echo "defaultConfig: ${defaultConfig.toString()}"
     //读取继承配置文件
     if (ObjUtils.isNotEmpty(customConfig.CONFIG_EXTEND) && ObjUtils.isNotEmpty(EFileReadType.get(customConfig.CONFIG_EXTEND.configFullPath))) {
         extendConfig = new ConfigUtils(this).readConfigFromFullPath(customConfig.CONFIG_EXTEND.configFullPath)
-        echo "extendConfig: ${extendConfig.toString()}"
     }
     //合并自定义配置
     fullConfig = MapUtils.merge([defaultConfig, extendConfig, customConfig])
     //根据自定义构建参数，修改配置
     fullConfig = ConfigMergeUtils.mergeParams(fullConfig, params)
-    echo "fullConfig merged: ${fullConfig}"
     return MapUtils.deepCopy(fullConfig)
 }
 

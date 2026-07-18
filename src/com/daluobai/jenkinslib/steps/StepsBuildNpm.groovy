@@ -37,6 +37,10 @@ class StepsBuildNpm implements Serializable {
         AssertUtils.notNull(configDefault, "DEFAULT_CONFIG为空")
         AssertUtils.notNull(configShare, "SHARE_PARAM为空")
         AssertUtils.notNull(configSteps, "DEPLOY_PIPELINE.stepsBuildNpm为空")
+        AssertUtils.notBlank(configSteps.gitUrl?.toString(), "gitUrl为空")
+        AssertUtils.notBlank(configSteps.gitBranch?.toString(), "gitBranch为空")
+        AssertUtils.notBlank(configSteps.buildCMD?.toString(), "buildCMD为空")
+        AssertUtils.isTrue(configStepsStorage?.archiveType in ["TAR", "ZIP"], "stepsStorage.archiveType仅支持TAR或ZIP")
 
         def pathBase = "${steps.env.WORKSPACE}"
         //docker-构建产物目录
@@ -62,22 +66,34 @@ class StepsBuildNpm implements Serializable {
             def mavenImage = steps.docker.image("${dockerBuildImageUrl}")
             mavenImage.pull()
 
-            def mvnCMDSubMod = "-pl ${configSteps.subModule} -am -amd"
-            def mvnCMDActiveProfile = "-P ${configSteps.activeProfile}"
-
             //容器中缓存modules文件夹的根路径
-            def dockerModulesPath = "/root/.npm/"
+            def dockerModulesPath = "/root/.npm"
             //容器中缓存modules文件夹的项目路径
             def dockerModulesProjectPath = "${dockerModulesPath}/${steps.currentBuild.projectName}"
+            boolean cacheNodeModules = configSteps.cacheNodeModules != false
+            String restoreNodeModulesCMD = cacheNodeModules ? """
+                        rm -rf node_modules
+                        if [ -d ${dockerModulesProjectPath}/node_modules ]; then
+                            cp -a ${dockerModulesProjectPath}/node_modules ./node_modules
+                        fi
+                    """ : "rm -rf ${dockerModulesProjectPath}/node_modules node_modules"
+            String persistNodeModulesCMD = cacheNodeModules ? """
+                        rm -rf ${dockerModulesProjectPath}/node_modules
+                        if [ -d node_modules ]; then
+                            mkdir -p ${dockerModulesProjectPath}
+                            cp -a node_modules ${dockerModulesProjectPath}/node_modules
+                        fi
+                    """ : ":"
+            String archiveCommand = configStepsStorage.archiveType == "ZIP" ? """
+                        cd ${pathBase}/${pathCode}/${pathCode}/dist
+                        zip -r ${pathBase}/${pathPackage}/app.zip .
+                    """ : "tar -czvf ${pathBase}/${pathPackage}/app.tar.gz -C ${pathBase}/${pathCode}/${pathCode}/dist ."
             //这里默认会把工作空间挂载到容器中的${steps.env.WORKSPACE}目录
             mavenImage.inside("--entrypoint '' -v npm-repo:${dockerModulesPath}") {
-                //从 jenkins 凭据管理中获取密钥文件路径并且拷贝到~/.ssh/id_rsa
-                stepsGit.saveJenkinsSSHKey('ssh-git',"${steps.env.WORKSPACE}/${pathSSHKey}/ssh-git")
-                //生成known_hosts
-                stepsGit.sshKeyscan("${configSteps.gitUrl}", "~/.ssh/known_hosts")
-                //不使用缓存node_modules
-                if (ObjUtils.isNotEmpty(configSteps["cacheNodeModules"]) && !configSteps["cacheNodeModules"]){
-//                    steps.sh "rm -rf ${dockerModulesProjectPath}/node_modules || true"
+                if (isSshGitUrl(configSteps.gitUrl?.toString())) {
+                    String credentialsId = StrUtils.isNotBlank(configSteps.credentialsId) ? configSteps.credentialsId : "ssh-git"
+                    stepsGit.saveJenkinsSSHKey(credentialsId,"${steps.env.WORKSPACE}/${pathSSHKey}/ssh-git")
+                    stepsGit.sshKeyscan("${configSteps.gitUrl}", "~/.ssh/known_hosts")
                 }
                 steps.sh """
                         #! /bin/sh -e
@@ -100,10 +116,11 @@ class StepsBuildNpm implements Serializable {
                         cd ${pathBase}/${pathCode}/${pathCode}
                         git log --pretty=format:"%h -%an,%ar : %s" -1
                         git config core.ignorecase false
+                        ${restoreNodeModulesCMD}
                         ${configSteps.buildCMD}
+                        ${persistNodeModulesCMD}
                         ls -al ${pathBase}/${pathCode}/${pathCode}/dist
-                        cd ${pathBase}/${pathCode}/${pathCode}/
-                        ${configStepsStorage.archiveType == "ZIP" ? "zip -r ${pathBase}/${pathPackage}/app.zip ./dist" : "tar -czvf ${pathBase}/${pathPackage}/app.tar.gz -C ${pathBase}/${pathCode}/${pathCode}/dist ."}
+                        ${archiveCommand}
                     """
             }
         }
@@ -125,5 +142,9 @@ class StepsBuildNpm implements Serializable {
             return ""
         }
         return gitUrl.startsWith("git@") || gitUrl.startsWith("ssh://") ? "ssh-git" : ""
+    }
+
+    private static boolean isSshGitUrl(String gitUrl) {
+        return StrUtils.isNotBlank(gitUrl) && (gitUrl.startsWith("git@") || gitUrl.startsWith("ssh://"))
     }
 }

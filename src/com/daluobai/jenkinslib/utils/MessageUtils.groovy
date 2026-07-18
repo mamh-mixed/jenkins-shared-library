@@ -5,6 +5,7 @@ import com.daluobai.jenkinslib.utils.AssertUtils
 import com.daluobai.jenkinslib.utils.StrUtils
 import com.daluobai.jenkinslib.api.FeishuApi
 import com.daluobai.jenkinslib.api.WecomApi
+import com.daluobai.jenkinslib.api.DingDingApi
 import com.daluobai.jenkinslib.constant.EFileReadType
 import com.daluobai.jenkinslib.steps.StepsJenkins
 
@@ -26,6 +27,7 @@ class MessageUtils implements Serializable {
     /*******************初始化全局对象 开始*****************/
     def feishuApi = new FeishuApi(steps)
     def wecomApi = new WecomApi(steps)
+    def dingDingApi = new DingDingApi(steps)
     /*******************初始化全局对象 结束*****************/
 
     /**
@@ -40,23 +42,43 @@ class MessageUtils implements Serializable {
             return false
         }
         AssertUtils.notBlank(content, "content为空")
-        //遍历messageConfig
+        boolean allSuccess = true
+        // 每个通知渠道独立失败，不能覆盖真实的构建/部署结果。
         messageConfig.each { key, value ->
-            if (key == "wecom" && StrUtils.isNotBlank(value.key)) {
+            if (key == "wecom" && StrUtils.isNotBlank(value?.key)) {
                 if (value.fullMessage || simpleMessage) {
-                    //企业微信通知
-                    wecomApi.sendMsg(value.key, content)
+                    try {
+                        allSuccess = wecomApi.sendMsg(value.key, content) && allSuccess
+                    } catch (Exception e) {
+                        steps?.echo "企业微信通知发送失败: ${e.class.simpleName}"
+                        allSuccess = false
+                    }
                 }
 
             }
-            if (key == "feishu" && StrUtils.isNotBlank(value.token)) {
+            if (key == "feishu" && StrUtils.isNotBlank(value?.token)) {
                 if (value.fullMessage || simpleMessage) {
-                    //飞书通知
-                    feishuApi.sendMsg(value.token, title, content)
+                    try {
+                        allSuccess = feishuApi.sendMsg(value.token, title, content, value.version?.toString() ?: "v1") && allSuccess
+                    } catch (Exception e) {
+                        steps?.echo "飞书通知发送失败: ${e.class.simpleName}"
+                        allSuccess = false
+                    }
+                }
+            }
+            if (key == "dingding" && StrUtils.isNotBlank(value?.accessToken ?: value?.token)) {
+                if (value.fullMessage || simpleMessage) {
+                    String accessToken = (value.accessToken ?: value.token).toString()
+                    try {
+                        allSuccess = dingDingApi.sendMsg(accessToken, content) && allSuccess
+                    } catch (Exception e) {
+                        steps?.echo "钉钉通知发送失败: ${e.class.simpleName}"
+                        allSuccess = false
+                    }
                 }
             }
         }
-        return true
+        return allSuccess
     }
 
 }

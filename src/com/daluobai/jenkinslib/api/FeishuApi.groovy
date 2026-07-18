@@ -22,33 +22,34 @@ class FeishuApi implements Serializable {
      * @param msg 消息内容
      * @return
      */
-    def sendMsg(String chatToken,String title,String text) {
+    def sendMsg(String chatToken,String title,String text, String webhookVersion = "v1") {
         AssertUtils.notBlank(chatToken,"chatToken空的");
         AssertUtils.notBlank(title,"title空的");
         AssertUtils.notBlank(text,"text空的");
 
-        Map<String,Object> params = new HashMap<>();
-        params.put("title",title);
-        params.put("text",text);
+        boolean useV2 = webhookVersion?.equalsIgnoreCase("v2") || chatToken.startsWith("https://open.feishu.cn/open-apis/bot/v2/")
+        String webhookUrl = chatToken.startsWith("http://") || chatToken.startsWith("https://") ?
+                chatToken : "https://open.feishu.cn/open-apis/bot/${useV2 ? 'v2/' : ''}hook/${chatToken}"
+        Map<String,Object> params = useV2 ? [
+                msg_type: "text",
+                content : [text: "${title}\n${text}"]
+        ] : [title: title, text: text]
 
         String paramsStr = JsonUtils.toJsonStr(params);
-        String response = "";
         try {
-            response = HttpUtils.postJson("https://open.feishu.cn/open-apis/bot/hook/"+chatToken,
-                    paramsStr);
+            String response = HttpUtils.postJson(webhookUrl, paramsStr)
+            if (StrUtils.isBlank(response)){
+                return false
+            }
+            Map<String, Object> responseJson = JsonUtils.parseObj(response)
+            if (useV2) {
+                Object code = responseJson.get("code")
+                return code != null && Integer.parseInt(code.toString()) == 0
+            }
+            return responseJson.get("ok") == true
         } catch (Exception e) {
-            e.printStackTrace();
-        }
-        if (StrUtils.isBlank(response)){
+            steps?.echo "飞书通知发送失败: ${e.class.simpleName}"
             return false
         }
-        def responseJson = JsonUtils.parseObj(response);
-        this.steps.echo "飞书发送消息结果："+response;
-//        飞书发送消息结果：{"ok":true}
-
-
-        Boolean ok = responseJson.get("ok") as Boolean;
-        return ok != null && ok;
-
     }
 }

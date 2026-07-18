@@ -29,7 +29,7 @@ class StepsJavaWeb implements Serializable {
 
     //发布
     def deploy(Map parameterMap) {
-        steps.echo "StepsJavaWeb:${parameterMap}"
+        steps.echo "开始部署Java服务"
         AssertUtils.notEmpty(parameterMap,"参数为空")
         def pathRoot = parameterMap.pathRoot
         def globalParameterMap = steps.globalParameterMap

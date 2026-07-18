@@ -29,7 +29,7 @@ class KubernetesApi implements Serializable {
         try{
             responseJson = JsonUtils.parseObj(deployStatusMap);
         } catch (Exception e) {
-            e.printStackTrace();
+            steps?.echo "Kubernetes deployment状态解析失败: ${e.class.simpleName}"
         }
         return responseJson;
 

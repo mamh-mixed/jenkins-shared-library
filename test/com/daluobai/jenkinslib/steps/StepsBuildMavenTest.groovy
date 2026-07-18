@@ -50,6 +50,25 @@ class StepsBuildMavenTest {
         assertFalse(steps.shScripts.any { it.contains('git clone') })
     }
 
+    @Test
+    void buildSupportsRootModuleWhenSubModuleIsOmitted() {
+        FakeSteps steps = new FakeSteps()
+        StepsBuildMaven stepsBuildMaven = new StepsBuildMaven(steps)
+        stepsBuildMaven.stepsGit = new FakeStepsGit()
+
+        stepsBuildMaven.build([
+                DEFAULT_CONFIG : [docker: [registry: [domain: 'docker.io']]],
+                SHARE_PARAM    : [:],
+                DEPLOY_PIPELINE: [stepsBuild: [stepsBuildMaven: [
+                        gitUrl: 'https://example.com/team/service.git', gitBranch: 'main',
+                        lifecycle: 'clean package', skipTest: true
+                ]]]
+        ])
+
+        assertFalse(steps.shScripts.any { it.contains('-pl null') })
+        assertTrue(steps.shScripts.any { it.contains('/workspace/code/code/target') })
+    }
+
     static class FakeSteps {
         Map env = [WORKSPACE: '/workspace']
         FakeDocker docker = new FakeDocker()

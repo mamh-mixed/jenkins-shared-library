@@ -44,10 +44,14 @@ class FileUtils implements Serializable {
         AssertUtils.notBlank(path, "path为空")
         def fileString = ""
         if (eConfigType == EFileReadType.HOST_PATH) {
-            def file = new File(path)
-            boolean isFile = IoUtils.isFile(file)
-            AssertUtils.isTrue(isFile, "配置文件不存在")
-            fileString = IoUtils.readString(file, Charset.forName("utf-8"))
+            if (steps != null) {
+                AssertUtils.isTrue(steps.fileExists(path), "配置文件不存在")
+                fileString = steps.readFile(file: path, encoding: "UTF-8")
+            } else {
+                def file = new File(path)
+                AssertUtils.isTrue(IoUtils.isFile(file), "配置文件不存在")
+                fileString = IoUtils.readString(file, Charset.forName("utf-8"))
+            }
         } else if (eConfigType == EFileReadType.RESOURCES) {
             fileString = steps.libraryResource path
         } else if (eConfigType == EFileReadType.URL) {

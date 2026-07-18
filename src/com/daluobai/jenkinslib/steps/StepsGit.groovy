@@ -132,10 +132,12 @@ class StepsGit implements Serializable {
      * @param targetCredentialsId
      * @return
      */
-    def syncGit2Git(String orgGitUrl, String orgCredentialsId, String targetGitUrl, String targetCredentialsId) {
+    def syncGit2Git(String orgGitUrl, String orgCredentialsId, String targetGitUrl, String targetCredentialsId, boolean mirrorAllRefs = false) {
+        AssertUtils.notBlank(orgGitUrl, "orgGitUrl为空")
+        AssertUtils.notBlank(orgCredentialsId, "orgCredentialsId为空")
+        AssertUtils.notBlank(targetGitUrl, "targetGitUrl为空")
+        AssertUtils.notBlank(targetCredentialsId, "targetCredentialsId为空")
         def pathBase = "${steps.env.WORKSPACE}"
-        //docker-构建产物目录
-        def pathPackage = "package"
         //docker-代码目录
         def pathCode = "code"
         //存放临时sshkey的目录
@@ -146,20 +148,21 @@ class StepsGit implements Serializable {
         //生成known_hosts
         this.sshKeyscan("${orgGitUrl}", "~/.ssh/known_hosts")
         this.sshKeyscan("${targetGitUrl}", "~/.ssh/known_hosts")
+        String repositoryPath = mirrorAllRefs ? "${pathBase}/${pathCode}/mirror.git" : "${pathBase}/${pathCode}/repository"
+        String cloneOption = mirrorAllRefs ? "--mirror" : ""
+        String pushCommand = mirrorAllRefs ?
+                "git -C \"${repositoryPath}\" push --quiet --mirror origin_target" :
+                "git -C \"${repositoryPath}\" push --quiet origin_target HEAD"
         steps.sh """
                         #! /bin/sh -e
-                        mkdir -p ${pathBase}/${pathPackage} && mkdir -p ${pathBase}/${pathCode}
-                        cd ${pathBase}/${pathCode}
+                        mkdir -p "${pathBase}/${pathCode}"
+                        rm -rf "${repositoryPath}"
                         git config --global http.version HTTP/1.1
-                        GIT_SSH_COMMAND='ssh -i ${steps.env.WORKSPACE}/${pathSSHKey}/ssh-git-org/id_rsa' git clone ${orgGitUrl} --quiet
-                        mv ${pathBase}/${pathCode}/\$(ls -A1 ${pathBase}/${pathCode}/) ${pathBase}/${pathCode}/${pathCode}
-                        cd ${pathBase}/${pathCode}/${pathCode}
-                        git log --pretty=format:"%h -%an,%ar : %s" -1
-                        git config core.ignorecase false
-                        ls -al ${pathBase}/${pathCode}/${pathCode}/
-                        git remote remove origin_target 2>/dev/null || true
-                        git remote add origin_target "${targetGitUrl}"
-                        GIT_SSH_COMMAND='ssh -i ${steps.env.WORKSPACE}/${pathSSHKey}/ssh-git-target/id_rsa' git push origin_target --quiet
+                        GIT_SSH_COMMAND='ssh -i ${steps.env.WORKSPACE}/${pathSSHKey}/ssh-git-org/id_rsa' git clone --quiet ${cloneOption} "${orgGitUrl}" "${repositoryPath}"
+                        git -C "${repositoryPath}" log --pretty=format:"%h -%an,%ar : %s" -1
+                        git -C "${repositoryPath}" remote remove origin_target 2>/dev/null || true
+                        git -C "${repositoryPath}" remote add origin_target "${targetGitUrl}"
+                        GIT_SSH_COMMAND='ssh -i ${steps.env.WORKSPACE}/${pathSSHKey}/ssh-git-target/id_rsa' ${pushCommand}
                     """
     }
 }

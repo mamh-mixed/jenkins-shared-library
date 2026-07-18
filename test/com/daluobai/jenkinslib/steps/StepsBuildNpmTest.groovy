@@ -49,6 +49,31 @@ class StepsBuildNpmTest {
         assertFalse(steps.shScripts.any { it.contains('git clone') })
     }
 
+    @Test
+    void buildSkipsSshSetupForHttpsAndCreatesFlatZipArchive() {
+        FakeSteps steps = new FakeSteps()
+        StepsBuildNpm stepsBuildNpm = new StepsBuildNpm(steps)
+        FakeStepsGit fakeStepsGit = new FakeStepsGit()
+        stepsBuildNpm.stepsGit = fakeStepsGit
+
+        stepsBuildNpm.build([
+                DEFAULT_CONFIG : [docker: [registry: [domain: 'docker.io']]],
+                SHARE_PARAM    : [:],
+                DEPLOY_PIPELINE: [
+                        stepsBuildNpm: [
+                                gitUrl: 'https://example.com/team/web.git', gitBranch: 'main',
+                                buildCMD: 'npm ci && npm run build', cacheNodeModules: false
+                        ],
+                        stepsStorage : [archiveType: 'ZIP']
+                ]
+        ])
+
+        assertEquals(0, fakeStepsGit.saveKeyCalls)
+        assertEquals(0, fakeStepsGit.keyscanCalls)
+        assertTrue(steps.shScripts.any { it.contains('zip -r /workspace/package/app.zip .') })
+        assertFalse(steps.shScripts.any { it.contains('app.zip ./dist') })
+    }
+
     static class FakeSteps {
         Map env = [WORKSPACE: '/workspace']
         Map currentBuild = [projectName: 'web-job']
@@ -98,10 +123,15 @@ class StepsBuildNpmTest {
     }
 
     static class FakeStepsGit {
+        int saveKeyCalls = 0
+        int keyscanCalls = 0
+
         void saveJenkinsSSHKey(String credentialsId, String path) {
+            saveKeyCalls++
         }
 
         void sshKeyscan(String gitUrl, String filePath) {
+            keyscanCalls++
         }
     }
 }

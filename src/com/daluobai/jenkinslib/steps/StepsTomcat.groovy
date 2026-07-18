@@ -1,6 +1,5 @@
 package com.daluobai.jenkinslib.steps
 
-@Grab('org.reflections:reflections:0.9.9-RC1')
 import com.daluobai.jenkinslib.utils.DateUtils
 import com.daluobai.jenkinslib.utils.AssertUtils
 import com.daluobai.jenkinslib.utils.ObjUtils
@@ -28,7 +27,7 @@ class StepsTomcat implements Serializable {
 
     //发布
     def deploy(Map parameterMap) {
-        steps.echo "StepsJavaWeb:${parameterMap}"
+        steps.echo "开始部署Tomcat应用"
         AssertUtils.notEmpty(parameterMap,"参数为空")
         def enable = parameterMap.enable
         if (enable == false) {
@@ -56,7 +55,7 @@ class StepsTomcat implements Serializable {
         steps.sh "ls -l package"
         steps.sh "mkdir -p ${deployPath}/ && mkdir -p ${tomcatHome} && mkdir -p ${tomcatHome}/backup/${appName}"
         //备份
-        steps.sh "mv ${deployPath}/${archiveName} ${tomcatHome}/backup/${appName}/${backAppName}/ || true"
+        steps.sh "mv ${deployPath}/${archiveName} ${tomcatHome}/backup/${appName}/${backAppName} || true"
         steps.dir("${tomcatHome}/backup/${appName}/"){
             steps.sh "find . -mtime +3 -delete"
         }

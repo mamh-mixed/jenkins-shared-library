@@ -28,22 +28,25 @@ class EndpointUtils implements Serializable {
         boolean isOnline = false
         for (int i = 0; i < 60; i++) {
 //            steps.echo "健康检查-第${i}次"
-            sleep 3000
+            steps.sleep time: 3000, unit: 'MILLISECONDS'
             String response = "";
             try {
                 response = HttpUtils.get(heathcheckUrl)
             } catch (Exception e) {
 
             }
-            if (StrUtils.isBlank(response) || !JsonUtils.isJson(response)){
-                continue
-            }
-            def responseJson = JsonUtils.parseObj(response);
-
-            String status = responseJson.getStr("status");
-            if (StrUtils.isNotBlank(status) && status.equals("UP")){
-                isOnline = true
-                break
+            try {
+                if (StrUtils.isBlank(response) || !JsonUtils.isJsonObj(response)){
+                    continue
+                }
+                Map<String, Object> responseJson = JsonUtils.parseObj(response)
+                String status = responseJson.get("status")?.toString()
+                if (StrUtils.isNotBlank(status) && status.equals("UP")){
+                    isOnline = true
+                    break
+                }
+            } catch (Exception ignored) {
+                // 无效或不完整的响应按本次探测失败处理，继续重试。
             }
         }
 
@@ -64,14 +67,19 @@ class EndpointUtils implements Serializable {
         boolean isOnline = false
         for (int i = 0; i < 60; i++) {
 //            steps.echo "发布状态检查-第${i}次"
-            sleep 3000
+            steps.sleep time: 3000, unit: 'MILLISECONDS'
             def deployStatusMap = kubernetesApi.deploymentStatus(deployName,namespace)
             steps.echo "发布状态检查:${deployStatusMap}"
             if (deployStatusMap == null){
                 continue
             }
-            int replicas = deployStatusMap.getStr("replicas");
-            int readyReplicas = deployStatusMap.getStr("readyReplicas");
+            Object replicasValue = deployStatusMap.get("replicas")
+            Object readyReplicasValue = deployStatusMap.get("readyReplicas")
+            if (replicasValue == null || readyReplicasValue == null) {
+                continue
+            }
+            int replicas = Integer.parseInt(replicasValue.toString())
+            int readyReplicas = Integer.parseInt(readyReplicasValue.toString())
             if (replicas > 0 && replicas == readyReplicas){
                 isOnline = true
                 break
@@ -100,7 +108,7 @@ class EndpointUtils implements Serializable {
         boolean isOnline = false
         for (int i = 0; i < failureThreshold; i++) {
 //            steps.echo "健康检查-第${i}次"
-            sleep periodMS
+            steps.sleep time: periodMS, unit: 'MILLISECONDS'
             //加上wc -l会导致结果不对，所以按照是否有返回值判断
             def portListeningStr = steps.sh returnStdout: true, script: """ss -tuln | egrep '^.*${localTCPPort}\\s' | awk '\$1 ~ /tcp/ && \$2 == "LISTEN" {print \$0}'"""
             boolean portListening = ObjUtils.isNotEmpty(portListeningStr) && ObjUtils.isNotEmpty(portListeningStr.trim())
@@ -134,11 +142,14 @@ class EndpointUtils implements Serializable {
         boolean isOnline = false
         for (int i = 0; i < failureThreshold; i++) {
 //            steps.echo "健康检查-第${i}次"
-            sleep periodMS
+            steps.sleep time: periodMS, unit: 'MILLISECONDS'
             def httpCode = "0"
             try {
                 httpCode = steps.sh returnStdout: true, script: """curl -s -o /dev/null -w '%{http_code}' --connect-timeout ${timeout} ${url}"""
             } catch (Exception e) {
+                if (isFlowInterrupted(e)) {
+                    throw e
+                }
             }
             boolean httpListening = ObjUtils.isNotEmpty(httpCode) && httpCode.trim() == "200"
             if (httpListening){
@@ -171,13 +182,16 @@ class EndpointUtils implements Serializable {
         boolean isOnline = false
         for (int i = 0; i < failureThreshold; i++) {
 //            steps.echo "健康检查-第${i}次"
-            sleep periodMS
+            steps.sleep time: periodMS, unit: 'MILLISECONDS'
             def exitCode = 1
             try {
                 steps.timeout(time: timeout, unit: 'SECONDS') {
                     exitCode = steps.sh label: '执行command参数', returnStatus: true, script: command
                 }
             } catch (Exception e) {
+                if (isFlowInterrupted(e)) {
+                    throw e
+                }
                 exitCode = 1
             }
             boolean isSuccess = ObjUtils.isNotEmpty(exitCode) && exitCode == 0
@@ -188,5 +202,9 @@ class EndpointUtils implements Serializable {
             }
         }
         return isOnline;
+    }
+
+    private static boolean isFlowInterrupted(Exception e) {
+        return e.class.name == 'org.jenkinsci.plugins.workflow.steps.FlowInterruptedException'
     }
 }

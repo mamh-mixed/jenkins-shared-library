@@ -53,7 +53,7 @@ def call(Map customConfig) {
         try {
             //获取并合并配置
             def fullConfig = mergeConfig(customConfig)
-            echo "fullConfig: ${fullConfig.toString()}"
+            echo "配置加载完成，appName=${fullConfig.SHARE_PARAM.appName}"
             //设置共享参数。
             globalParameterMap = fullConfig
             messageUtils.sendMessage(false,customConfig.SHARE_PARAM.message, "发布开始：${customConfig.SHARE_PARAM.appName}", "发布开始: ${currentBuild.fullDisplayName}")
@@ -129,19 +129,15 @@ def mergeConfig(Map customConfig) {
     def defaultConfig = [:]
     //读取默认配置文件
     defaultConfig = new ConfigUtils(this).readConfig(EFileReadType.RESOURCES, defaultConfigPath(EFileReadType.RESOURCES))
-    echo "customConfig: ${customConfig.toString()}"
-    echo "defaultConfig: ${defaultConfig.toString()}"
     //读取继承配置文件
     if (ObjUtils.isNotEmpty(customConfig.CONFIG_EXTEND) && ObjUtils.isNotEmpty(EFileReadType.get(customConfig.CONFIG_EXTEND.configFullPath))) {
         extendConfig = new ConfigUtils(this).readConfigFromFullPath(customConfig.CONFIG_EXTEND.configFullPath)
-        echo "extendConfig: ${extendConfig.toString()}"
     }
     //合并自定义配置
     fullConfig = MapUtils.merge([defaultConfig, extendConfig, customConfig])
 
     //根据自定义构建参数，修改配置
     fullConfig = ConfigMergeUtils.mergeParams(fullConfig, params)
-    echo "fullConfig merged: ${fullConfig}"
 
     return MapUtils.deepCopy(fullConfig)
 }

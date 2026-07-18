@@ -34,7 +34,7 @@ class HttpUtils implements Serializable {
                 throw new RuntimeException("HTTP请求失败，响应码: " + responseCode)
             }
         } catch (Exception e) {
-            throw new RuntimeException("GET请求失败: " + url, e)
+            throw new RuntimeException("GET请求失败: " + safeUrlForError(url), e)
         }
     }
 
@@ -111,7 +111,7 @@ class HttpUtils implements Serializable {
                 throw new RuntimeException("HTTP请求失败，响应码: " + responseCode)
             }
         } catch (Exception e) {
-            throw new RuntimeException("POST请求失败: " + url, e)
+            throw new RuntimeException("POST请求失败: " + safeUrlForError(url), e)
         }
     }
 
@@ -147,7 +147,7 @@ class HttpUtils implements Serializable {
                 throw new RuntimeException("HTTP请求失败，响应码: " + responseCode)
             }
         } catch (Exception e) {
-            throw new RuntimeException("POST JSON请求失败: " + url, e)
+            throw new RuntimeException("POST JSON请求失败: " + safeUrlForError(url), e)
         }
     }
 
@@ -187,7 +187,23 @@ class HttpUtils implements Serializable {
                 throw new RuntimeException("下载文件失败，响应码: " + responseCode)
             }
         } catch (Exception e) {
-            throw new RuntimeException("下载文件失败: " + url, e)
+            throw new RuntimeException("下载文件失败: " + safeUrlForError(url), e)
+        }
+    }
+
+    /**
+     * 异常信息只保留目标主机，避免 webhook token、query token 等凭据进入 Jenkins 日志。
+     */
+    private static String safeUrlForError(String url) {
+        try {
+            URI uri = new URI(url)
+            if (!uri.scheme || !uri.host) {
+                return "<redacted-url>"
+            }
+            String port = uri.port > 0 ? ":${uri.port}" : ""
+            return "${uri.scheme}://${uri.host}${port}/<redacted>"
+        } catch (Exception ignored) {
+            return "<redacted-url>"
         }
     }
 
@@ -271,7 +287,7 @@ class HttpUtils implements Serializable {
                 
                 return new HttpResponse(responseCode, responseBody)
             } catch (Exception e) {
-                throw new RuntimeException("HTTP请求失败: " + url, e)
+                throw new RuntimeException("HTTP请求失败: " + HttpUtils.safeUrlForError(url), e)
             }
         }
     }

@@ -13,9 +13,15 @@ class StepsDocker implements Serializable {
     StepsDocker(steps) { this.steps = steps }
 
     def login(String registry,String userName,String password) {
-        steps.echo("StepsDocker1:${userName} -p passowrd ${registry}")
-        steps.sh "docker login -u ${userName} -p ${password} ${registry}"
-        steps.echo("StepsDocker")
+        AssertUtils.notBlank(registry, "registry为空")
+        AssertUtils.notBlank(userName, "userName为空")
+        AssertUtils.notBlank(password, "password为空")
+        steps.withEnv(["DOCKER_REGISTRY=${registry}", "DOCKER_USERNAME=${userName}", "DOCKER_PASSWORD=${password}"]) {
+            steps.sh label: "Docker registry login", script: '''#!/bin/sh
+set +x
+printf '%s' "$DOCKER_PASSWORD" | docker login --username "$DOCKER_USERNAME" --password-stdin "$DOCKER_REGISTRY"
+'''
+        }
     }
 
 }

@@ -1,12 +1,17 @@
 import com.daluobai.jenkinslib.api.CodeupApi
 import com.daluobai.jenkinslib.codeup.JenkinsfileInvocationParser
 import com.daluobai.jenkinslib.utils.AssertUtils
+import groovy.transform.Field
+
+@Field static final Set<String> REMOTE_COMMAND_FIELDS = [
+        'buildCMD', 'afterRunCMD', 'command', 'lifecycle', 'runOptions', 'runArgs', 'buildArgs'
+] as Set<String>
 
 /**
  * 扫描 Codeup 仓库中的 Jenkinsfile，并执行允许的方法。
  * jenkinsfileName 可选，按文件名匹配，默认 Jenkinsfile.groovy；
- * allowedRepositoryNames 可选，必须是仓库名称集合（按 Codeup 返回的 repository.name 过滤）；
- * 不传时处理全部仓库，传空集合时全部跳过。
+ * allowedRepositoryNames 默认必填，按 Codeup 返回的 repository.name 过滤；
+ * 传空集合时全部跳过。只有显式设置 allowAllRepositories=true 才会扫描全部仓库。
  */
 def call(Map config = [:]) {
     AssertUtils.notBlank(config.token?.toString(), 'token空的')
@@ -15,10 +20,19 @@ def call(Map config = [:]) {
     String token = config.token.toString()
     String organizationId = config.organizationId.toString()
     String domain = config.domain?.toString() ?: CodeupApi.DEFAULT_DOMAIN
+    Set<String> allowedDomains = ((config.allowedDomains ?: [CodeupApi.DEFAULT_DOMAIN]) as Collection).collect { Object item ->
+        return normalizeDomainHost(item?.toString())
+    } as Set<String>
+    validateDomain(domain, allowedDomains)
     String ref = config.ref?.toString() ?: 'master'
     String jenkinsfileName = config.jenkinsfileName?.toString()?.trim() ?: 'Jenkinsfile.groovy'
     boolean dryRun = config.dryRun == true
     boolean failAtEnd = config.failAtEnd == true
+    boolean allowAllRepositories = config.allowAllRepositories == true
+    boolean allowUnsafeCommandFields = config.allowUnsafeCommandFields == true
+    Set<String> allowedCommandValues = ((config.allowedCommandValues ?: []) as Collection).collect { Object item ->
+        return item?.toString()
+    } as Set<String>
 
     Set<String> allowedMethods = ((config.allowedMethods ?: ['deployJavaWeb', 'deployWeb']) as Collection).collect { Object item ->
         return item.toString()
@@ -32,6 +46,9 @@ def call(Map config = [:]) {
         allowedRepositoryNames = ((Collection) config.allowedRepositoryNames).collect { Object item ->
             return item?.toString()
         } as Set<String>
+    }
+    if (!hasAllowedRepositoryNames && !allowAllRepositories) {
+        throw new IllegalArgumentException('必须配置allowedRepositoryNames；如确需扫描全部仓库，请显式设置allowAllRepositories=true')
     }
 
     def whitelist = [
@@ -69,7 +86,8 @@ def call(Map config = [:]) {
         }
         return allowed
     }.each { Map<String, Object> repository ->
-        processRepository(repository, codeupApi, parser, whitelist, allowedMethods, domain, token, organizationId, ref, jenkinsfileName, dryRun, summary)
+        processRepository(repository, codeupApi, parser, whitelist, allowedMethods, domain, token, organizationId, ref,
+                jenkinsfileName, dryRun, allowedCommandValues, allowUnsafeCommandFields, summary)
     }
 
     if (failAtEnd && (!summary.failed.isEmpty() || !summary.rejected.isEmpty())) {
@@ -89,6 +107,8 @@ private void processRepository(Map<String, Object> repository,
                                String ref,
                                String jenkinsfileName,
                                boolean dryRun,
+                               Set<String> allowedCommandValues,
+                               boolean allowUnsafeCommandFields,
                                Map summary) {
     String repositoryId = repository.id?.toString()
     String repositoryName = repository.name?.toString() ?: repository.path?.toString() ?: repository.pathWithNamespace?.toString() ?: repositoryId
@@ -105,7 +125,8 @@ private void processRepository(Map<String, Object> repository,
         }
 
         jenkinsfiles.each { Map<String, Object> fileItem ->
-            processJenkinsfile(repositoryId, repositoryName, fileItem, codeupApi, parser, whitelist, allowedMethods, domain, token, organizationId, ref, dryRun, summary)
+            processJenkinsfile(repositoryId, repositoryName, fileItem, codeupApi, parser, whitelist, allowedMethods,
+                    domain, token, organizationId, ref, dryRun, allowedCommandValues, allowUnsafeCommandFields, summary)
         }
     } catch (Exception e) {
         Map<String, Object> failure = buildEntry(repositoryId, repositoryName, null, "repository failed: ${e.message}")
@@ -126,6 +147,8 @@ private void processJenkinsfile(String repositoryId,
                                 String organizationId,
                                 String ref,
                                 boolean dryRun,
+                                Set<String> allowedCommandValues,
+                                boolean allowUnsafeCommandFields,
                                 Map summary) {
     String filePath = fileItem.path?.toString() ?: fileItem.name?.toString() ?: 'Jenkinsfile.groovy'
     summary.scannedFiles = ((summary.scannedFiles ?: 0) as int) + 1
@@ -136,6 +159,7 @@ private void processJenkinsfile(String repositoryId,
         }
 
         Map invocation = parser.parse(content, allowedMethods)
+        validateRemoteConfig(invocation.customConfig, allowedCommandValues, allowUnsafeCommandFields)
         if (dryRun) {
             echo "Codeup Jenkinsfile解析成功（dryRun），repo=${repositoryName}, path=${filePath}, method=${invocation.methodName}"
             return
@@ -152,6 +176,69 @@ private void processJenkinsfile(String repositoryId,
         Map<String, Object> failure = buildEntry(repositoryId, repositoryName, filePath, "execution failed: ${e.message}")
         summary.failed.add(failure)
         echo "Codeup Jenkinsfile处理失败，跳过继续。${failure}"
+    }
+}
+
+private static void validateRemoteConfig(Object value,
+                                         Set<String> allowedCommandValues,
+                                         boolean allowUnsafeCommandFields,
+                                         String path = 'customConfig') {
+    if (value instanceof Map) {
+        ((Map) value).each { Object rawKey, Object nestedValue ->
+            String key = rawKey?.toString()
+            String currentPath = "${path}.${key}"
+            if (REMOTE_COMMAND_FIELDS.contains(key)) {
+                if (!allowUnsafeCommandFields) {
+                    String commandValue = nestedValue?.toString()
+                    if (commandValue != null && commandValue.trim().isEmpty()) {
+                        return
+                    }
+                    if (commandValue == null || !allowedCommandValues.contains(commandValue)) {
+                        throw new IllegalArgumentException("远端配置字段${currentPath}包含命令内容，必须通过allowedCommandValues精确授权")
+                    }
+                }
+                return
+            }
+            validateRemoteConfig(nestedValue, allowedCommandValues, allowUnsafeCommandFields, currentPath)
+        }
+    } else if (value instanceof Collection) {
+        ((Collection) value).eachWithIndex { Object nestedValue, int index ->
+            validateRemoteConfig(nestedValue, allowedCommandValues, allowUnsafeCommandFields, "${path}[${index}]")
+        }
+    } else if (value instanceof CharSequence) {
+        String text = value.toString()
+        List<String> forbiddenTokens = ['\u0000', '\r', '\n', ';', '&', '|', '`', '$(', '>', '<', "'", '"']
+        if (forbiddenTokens.any { String token -> text.contains(token) }) {
+            throw new IllegalArgumentException("远端配置字段${path}包含未授权的Shell字符")
+        }
+    }
+}
+
+private static void validateDomain(String domain, Set<String> allowedDomains) {
+    String normalized = domain.contains('://') ? domain : "https://${domain}"
+    URI uri
+    try {
+        uri = new URI(normalized)
+    } catch (Exception ignored) {
+        throw new IllegalArgumentException('domain格式不正确')
+    }
+    if (!uri.scheme?.equalsIgnoreCase('https') || !uri.host || uri.userInfo != null) {
+        throw new IllegalArgumentException('domain必须是无用户信息的HTTPS地址')
+    }
+    if (!allowedDomains.contains(uri.host.toLowerCase(Locale.ROOT))) {
+        throw new IllegalArgumentException("domain不在allowedDomains白名单中: ${uri.host}")
+    }
+}
+
+private static String normalizeDomainHost(String domain) {
+    if (domain == null) {
+        return ''
+    }
+    String normalized = domain.contains('://') ? domain : "https://${domain}"
+    try {
+        return new URI(normalized).host?.toLowerCase(Locale.ROOT) ?: ''
+    } catch (Exception ignored) {
+        return ''
     }
 }
 

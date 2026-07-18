@@ -44,9 +44,6 @@ class ConfigUtils implements Serializable {
         def configMap = [:]
         def configStr = new FileUtils(steps).readString(eConfigType, path)
         if (eConfigType == EFileReadType.HOST_PATH) {
-            def file = new File(path)
-            boolean isFile = IoUtils.isFile(file)
-            AssertUtils.isTrue(isFile, "配置文件不存在")
             configMap = MapUtils.mapJsonString2Map(configStr)
         } else if (eConfigType == EFileReadType.RESOURCES) {
             configMap = MapUtils.mapJsonString2Map(configStr)

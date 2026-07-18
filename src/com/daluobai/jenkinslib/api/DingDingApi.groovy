@@ -32,20 +32,18 @@ class DingDingApi implements Serializable {
         params.put("text",paramsText);
 
         String paramsStr = JsonUtils.toJsonStr(params);
-        String response = "";
         try {
-            response = HttpUtils.postJson("https://oapi.dingtalk.com/robot/send?access_token="+accessToken,
-                    paramsStr);
+            String response = HttpUtils.postJson("https://oapi.dingtalk.com/robot/send?access_token="+accessToken,
+                    paramsStr)
+            if (StrUtils.isBlank(response)){
+                return false
+            }
+            Map<String, Object> responseJson = JsonUtils.parseObj(response)
+            Object errcode = responseJson.get("errcode")
+            return errcode != null && Integer.parseInt(errcode.toString()) == 0
         } catch (Exception e) {
-            e.printStackTrace();
-        }
-        if (StrUtils.isBlank(response)){
+            steps?.echo "钉钉通知发送失败: ${e.class.simpleName}"
             return false
         }
-        def responseJson = JsonUtils.parseObj(response);
-
-        def errcode = responseJson.get("errcode") as Integer;
-        return errcode != null && errcode == 0;
-
     }
 }
