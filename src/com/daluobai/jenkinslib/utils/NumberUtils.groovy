@@ -360,10 +360,10 @@ class NumberUtils implements Serializable {
             return null
         }
         
-        Number max = numbers[0]
-        for (int i = 1; i < numbers.length; i++) {
-            if (numbers[i] != null && compare(numbers[i], max) > 0) {
-                max = numbers[i]
+        Number max = null
+        for (Number number : numbers) {
+            if (number != null && (max == null || compare(number, max) > 0)) {
+                max = number
             }
         }
         return max
@@ -379,10 +379,10 @@ class NumberUtils implements Serializable {
             return null
         }
         
-        Number min = numbers[0]
-        for (int i = 1; i < numbers.length; i++) {
-            if (numbers[i] != null && compare(numbers[i], min) < 0) {
-                min = numbers[i]
+        Number min = null
+        for (Number number : numbers) {
+            if (number != null && (min == null || compare(number, min) < 0)) {
+                min = number
             }
         }
         return min
@@ -418,8 +418,13 @@ class NumberUtils implements Serializable {
             return BigDecimal.ZERO
         }
         
+        int valueCount = numbers.count { Number number -> number != null }
+        if (valueCount == 0) {
+            return BigDecimal.ZERO
+        }
+
         BigDecimal sum = sum(numbers)
-        return div(sum, numbers.length, scale)
+        return div(sum, valueCount, scale)
     }
 
     /**
@@ -466,8 +471,12 @@ class NumberUtils implements Serializable {
         if (value == null) {
             return "0%"
         }
+        if (scale < 0) {
+            throw new IllegalArgumentException("scale不能小于0")
+        }
         
         BigDecimal percent = mul(value, 100)
-        return format(percent, "#." + "0" * scale) + "%"
+        String pattern = scale == 0 ? "#" : "#." + "0" * scale
+        return format(percent, pattern) + "%"
     }
 }

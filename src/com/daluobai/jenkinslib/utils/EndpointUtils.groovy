@@ -96,7 +96,14 @@ class EndpointUtils implements Serializable {
      */
     def healthCheckWithLocalTCPPort(def localTCPPort,def periodSec,def failureThreshold) {
         AssertUtils.notNull(localTCPPort,"端口为空")
-        steps.echo "检查本地端口是否监听-参数${localTCPPort}，间隔${periodSec}，重试次数${failureThreshold}"
+        int port
+        try {
+            port = Integer.parseInt(localTCPPort.toString())
+        } catch (NumberFormatException ignored) {
+            throw new IllegalArgumentException("端口格式不正确")
+        }
+        AssertUtils.between(port, 1, 65535, "端口范围必须为1-65535")
+        steps.echo "检查本地端口是否监听-参数${port}，间隔${periodSec}，重试次数${failureThreshold}"
         if (ObjUtils.isNull(periodSec) || periodSec < 0){
             periodSec = 0
         }
@@ -104,16 +111,16 @@ class EndpointUtils implements Serializable {
             failureThreshold = 1
         }
         def periodMS = periodSec * 1000
-        steps.echo "检查本地端口是否监听:${localTCPPort}"
+        steps.echo "检查本地端口是否监听:${port}"
         boolean isOnline = false
         for (int i = 0; i < failureThreshold; i++) {
 //            steps.echo "健康检查-第${i}次"
             steps.sleep time: periodMS, unit: 'MILLISECONDS'
-            //加上wc -l会导致结果不对，所以按照是否有返回值判断
-            def portListeningStr = steps.sh returnStdout: true, script: """ss -tuln | egrep '^.*${localTCPPort}\\s' | awk '\$1 ~ /tcp/ && \$2 == "LISTEN" {print \$0}'"""
+            // 使用ss的端口过滤器精确匹配，避免检查80时误匹配到8080。
+            def portListeningStr = steps.sh returnStdout: true, script: """ss -H -ltn 'sport = :${port}'"""
             boolean portListening = ObjUtils.isNotEmpty(portListeningStr) && ObjUtils.isNotEmpty(portListeningStr.trim())
             if (portListening){
-                steps.echo "端口监听成功:${portListeningStr},${localTCPPort}"
+                steps.echo "端口监听成功:${portListeningStr},${port}"
                 isOnline = true
                 break
             }
@@ -145,7 +152,7 @@ class EndpointUtils implements Serializable {
             steps.sleep time: periodMS, unit: 'MILLISECONDS'
             def httpCode = "0"
             try {
-                httpCode = steps.sh returnStdout: true, script: """curl -s -o /dev/null -w '%{http_code}' --connect-timeout ${timeout} ${url}"""
+                httpCode = steps.sh returnStdout: true, script: """curl -s -o /dev/null -w '%{http_code}' --connect-timeout ${timeout} --max-time ${timeout} ${url}"""
             } catch (Exception e) {
                 if (isFlowInterrupted(e)) {
                     throw e
@@ -189,7 +196,7 @@ class EndpointUtils implements Serializable {
                     exitCode = steps.sh label: '执行command参数', returnStatus: true, script: command
                 }
             } catch (Exception e) {
-                if (isFlowInterrupted(e)) {
+                if (isFlowInterrupted(e) && !isTimeoutInterruption(e)) {
                     throw e
                 }
                 exitCode = 1
@@ -206,5 +213,18 @@ class EndpointUtils implements Serializable {
 
     private static boolean isFlowInterrupted(Exception e) {
         return e.class.name == 'org.jenkinsci.plugins.workflow.steps.FlowInterruptedException'
+    }
+
+    private static boolean isTimeoutInterruption(Exception e) {
+        if (!isFlowInterrupted(e)) {
+            return false
+        }
+        try {
+            return e.getCauses()?.any { Object cause ->
+                return cause?.class?.simpleName == 'ExceededTimeout'
+            } == true
+        } catch (Exception ignored) {
+            return false
+        }
     }
 }

@@ -89,7 +89,7 @@ class StepsJavaWeb implements Serializable {
 
         //生成服务文件
         steps.sh "systemctl stop ${appName}.service || true"
-        steps.sh "rm -f /etc/systemd/systemO/${appName}.service || true"
+        steps.sh "rm -f /etc/systemd/system/${appName}.service || true"
         def serviceTemplate = steps.libraryResource 'template/service/JavaWeb.service'
         def templateData = [
                 javaPath: javaPath,
