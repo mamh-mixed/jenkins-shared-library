@@ -33,6 +33,56 @@ class ConfigUtils implements Serializable {
         return this.readConfig(extendConfigType, path)
     }
 
+    /**
+     * 从完整路径读取可选配置；仅目标不存在时返回空配置。
+     */
+    Map readOptionalConfigFromFullPath(String configFullPath) {
+        AssertUtils.notBlank(configFullPath, "configFullPath为空")
+        String configType = StrUtils.subBefore(configFullPath, ":", false)
+        String path = StrUtils.subAfter(configFullPath, ":", false)
+        EFileReadType eConfigType = EFileReadType.get(configType)
+        AssertUtils.notNull(eConfigType, "配置类型为空")
+        AssertUtils.notBlank(path, "path为空")
+
+        if (eConfigType == EFileReadType.HOST_PATH && !hostPathExists(path)) {
+            return [:]
+        }
+
+        try {
+            return readConfig(eConfigType, path) as Map
+        } catch (Exception error) {
+            if (isMissingOptionalConfig(eConfigType, error)) {
+                return [:]
+            }
+            throw error
+        }
+    }
+
+    private boolean hostPathExists(String path) {
+        if (steps != null) {
+            return steps.fileExists(path)
+        }
+        return IoUtils.isFile(new File(path))
+    }
+
+    private static boolean isMissingOptionalConfig(EFileReadType eConfigType, Throwable error) {
+        Throwable current = error
+        while (current != null) {
+            String message = current.message ?: ""
+            if (eConfigType == EFileReadType.RESOURCES
+                    && message.contains("No such library resource")
+                    && message.contains("could be found")) {
+                return true
+            }
+            if (eConfigType == EFileReadType.URL
+                    && message.contains("HTTP请求失败，响应码: 404")) {
+                return true
+            }
+            current = current.cause
+        }
+        return false
+    }
+
 /**
  * 修改文件
  * @param path 文件路径
