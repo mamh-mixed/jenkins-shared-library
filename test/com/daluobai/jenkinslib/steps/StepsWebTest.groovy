@@ -22,6 +22,10 @@ class StepsWebTest {
         assertTrue(extractIndex < validateIndex)
         assertTrue(validateIndex < switchIndex)
         assertFalse(steps.scripts.take(switchIndex).any { it.contains('rm -rf app') })
+        assertFalse(steps.scripts.any { String script ->
+            script.contains('rm -rf /srv/www/demo/app') ||
+                    script.contains("rm -rf '/srv/www/demo/app'")
+        })
 
         String switchScript = steps.scripts[switchIndex]
         assertTrue(switchScript.contains('mv .app-next app'))
@@ -48,6 +52,10 @@ class StepsWebTest {
         assertTrue(extractIndex < validateIndex)
         assertTrue(validateIndex < switchIndex)
         assertFalse(steps.scripts.take(switchIndex).any { it.contains('rm -rf app') })
+        assertFalse(steps.scripts.any { String script ->
+            script.contains('rm -rf /srv/www/demo/app') ||
+                    script.contains("rm -rf '/srv/www/demo/app'")
+        })
         assertTrue(steps.scripts[switchIndex].contains('mv .app-next app'))
         assertTrue(steps.scripts[switchIndex].contains('mv .app-previous app'))
     }
