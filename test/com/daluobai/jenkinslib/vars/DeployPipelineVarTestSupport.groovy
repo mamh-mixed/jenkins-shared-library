@@ -22,7 +22,9 @@ abstract class DeployPipelineVarTestSupport {
         script.metaClass.libraryResource = { String path ->
             resourceReads.add(path)
             if (!resources.containsKey(path)) {
-                throw new IllegalArgumentException("测试资源不存在: ${path}")
+                throw new IllegalArgumentException(
+                        "No such library resource " + path + " could be found."
+                )
             }
             return JsonOutput.toJson(resources[path])
         }

@@ -164,7 +164,7 @@ def mergeConfig(Map customConfig) {
     Map extendConfig = [:]
     String configFullPath = customConfig?.CONFIG_EXTEND?.configFullPath?.toString()
     if (StrUtils.isNotBlank(configFullPath)) {
-        extendConfig = new ConfigUtils(this).readConfigFromFullPath(configFullPath)
+        extendConfig = new ConfigUtils(this).readOptionalConfigFromFullPath(configFullPath)
     }
 
     Map fullConfig = MapUtils.merge([defaultConfig, extendConfig, customConfig ?: [:]])

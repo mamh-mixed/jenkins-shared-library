@@ -37,6 +37,27 @@ class DeployWebVarTest extends DeployPipelineVarTestSupport {
     }
 
     @Test
+    void mergeConfigSkipsMissingExtensionResource() {
+        List<String> reads = []
+        Script script = loadPipelineScript('vars/deployWeb.groovy', [
+                'config/config.json': disabledWebConfig([
+                        appName   : 'default-app',
+                        defaultKey: 'default-value'
+                ])
+        ], ['SHARE_PARAM.appName': 'parameter-app'], reads)
+
+        Map result = script.invokeMethod('mergeConfig', [[
+                CONFIG_EXTEND: [configFullPath: 'RESOURCES:config/missing.json'],
+                SHARE_PARAM : [customKey: 'custom-value']
+        ]] as Object[]) as Map
+
+        assertEquals(['config/config.json', 'config/missing.json'], reads)
+        assertEquals('default-value', result.SHARE_PARAM.defaultKey)
+        assertEquals('custom-value', result.SHARE_PARAM.customKey)
+        assertEquals('parameter-app', result.SHARE_PARAM.appName)
+    }
+
+    @Test
     void mergeConfigRejectsInvalidExtensionType() {
         Script script = loadPipelineScript('vars/deployWeb.groovy', [
                 'config/config.json': disabledWebConfig()

@@ -40,6 +40,28 @@ class DeployJavaWebVarTest extends DeployPipelineVarTestSupport {
     }
 
     @Test
+    void mergeConfigSkipsMissingExtensionResourceAndKeepsLegacyCompatibility() {
+        List<String> reads = []
+        Map defaultConfig = disabledJavaConfig([defaultKey: 'default-value'])
+        Script script = loadPipelineScript('vars/deployJavaWeb.groovy', [
+                'config/config.json': defaultConfig
+        ], [:], reads)
+
+        Map result = script.invokeMethod('mergeConfig', [[
+                CONFIG_EXTEND : [configFullPath: 'RESOURCES:config/missing.json'],
+                DEPLOY_PIPELINE: [
+                        stepsBuildMaven: [enable: true, gitUrl: 'legacy.git']
+                ]
+        ]] as Object[]) as Map
+
+        assertEquals(['config/config.json', 'config/missing.json'], reads)
+        assertEquals('default-value', result.SHARE_PARAM.defaultKey)
+        assertEquals(true, result.DEPLOY_PIPELINE.stepsBuild.enable)
+        assertEquals('legacy.git', result.DEPLOY_PIPELINE.stepsBuild.stepsBuildMaven.gitUrl)
+        assertFalse(result.DEPLOY_PIPELINE.containsKey('stepsBuildMaven'))
+    }
+
+    @Test
     void callPreservesInvalidExtensionErrorWhenFinallyHasNoNotificationConfig() {
         Script script = loadPipelineScript('vars/deployJavaWeb.groovy', [
                 'config/config.json': disabledJavaConfig()
