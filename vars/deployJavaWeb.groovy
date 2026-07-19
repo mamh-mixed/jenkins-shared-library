@@ -114,7 +114,7 @@ def call(Map customConfig) {
         } finally {
             Map notificationShareParam = fullConfig?.SHARE_PARAM instanceof Map
                     ? fullConfig.SHARE_PARAM as Map
-                    : (customConfig?.SHARE_PARAM instanceof Map ? customConfig.SHARE_PARAM as Map : [:])
+                    : (customConfig?.SHARE_PARAM instanceof Map ? customConfig?.SHARE_PARAM as Map : [:])
             if (ObjUtils.isNotEmpty(notificationShareParam.message)) {
                 String messageTitle = ""
                 String messageContent = ""
