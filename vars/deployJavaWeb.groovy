@@ -43,33 +43,40 @@ def call(Map customConfig) {
     EBuildStatusType eBuildStatusType = EBuildStatusType.FAILED
     //DEPLOY_PIPELINE顺序定义
     def deployPipelineIndex = ["stepsBuild", "stepsStorage", "stepsDeploy"]
-    //如果没传项目名称，则使用jenkins项目名称
-    if (StrUtils.isBlank(customConfig.SHARE_PARAM.appName)) {
-        customConfig.SHARE_PARAM.appName = currentBuild.projectName
-    }
-    def SHARE_PARAM = customConfig.SHARE_PARAM
+    Map fullConfig = [:]
     /***初始化参数 结束**/
     //默认在同一个构建节点运行，如果需要在其他节点运行则单独写在node块中
     node(nodeBuildNodeList[0]) {
         try {
             //获取并合并配置
-            def fullConfig = mergeConfig(customConfig)
+            fullConfig = mergeConfig(customConfig ?: [:])
+            if (!(fullConfig.SHARE_PARAM instanceof Map)) {
+                fullConfig.SHARE_PARAM = [:]
+            }
+            if (StrUtils.isBlank(fullConfig.SHARE_PARAM.appName)) {
+                fullConfig.SHARE_PARAM.appName = currentBuild.projectName
+            }
             echo "配置加载完成，appName=${fullConfig.SHARE_PARAM.appName}"
             //设置共享参数。
             globalParameterMap = fullConfig
 
-            messageUtils.sendMessage(false,customConfig.SHARE_PARAM.message, "发布开始：${customConfig.SHARE_PARAM.appName}", "发布开始: ${currentBuild.fullDisplayName}")
+            messageUtils.sendMessage(
+                    false,
+                    fullConfig.SHARE_PARAM.message,
+                    "发布开始：${fullConfig.SHARE_PARAM.appName}",
+                    "发布开始: ${currentBuild.fullDisplayName}"
+            )
 
             //执行流程
-            deployPipelineIndex.each {
-                stage("${it}") {
-                    def pipelineConfigItemMap = fullConfig.DEPLOY_PIPELINE[it]
+            deployPipelineIndex.each { pipelineStep ->
+                stage("${pipelineStep}") {
+                    def pipelineConfigItemMap = fullConfig.DEPLOY_PIPELINE[pipelineStep]
                     if (pipelineConfigItemMap["enable"] != null && pipelineConfigItemMap["enable"] == false) {
-                        echo "跳过流程: ${it}"
+                        echo "跳过流程: ${pipelineStep}"
                         return
                     }
-                    echo "开始执行流程: ${it}"
-                    if (it == "stepsBuild") {
+                    echo "开始执行流程: ${pipelineStep}"
+                    if (pipelineStep == "stepsBuild") {
                         //设置环境变量
                         def stepsBuildEnvList = []
                         if (fullConfig.DEPLOY_PIPELINE.stepsBuild.stepsBuildEnv){
@@ -78,17 +85,22 @@ def call(Map customConfig) {
                         withEnv(stepsBuildEnvList) {
                             stepsBuildMaven.build(fullConfig)
                         }
-                    } else if (it == "stepsStorage") {
+                    } else if (pipelineStep == "stepsStorage") {
                         if (ObjUtils.isEmpty(pipelineConfigItemMap)) {
                             error "stepsStorage配置为空"
                         }
                         stepsJenkins.stash(pipelineConfigItemMap)
-                    } else if (it == "stepsDeploy") {
-                        messageUtils.sendMessage(false,customConfig.SHARE_PARAM.message, "准备重启：${customConfig.SHARE_PARAM.appName}", "准备重启: ${currentBuild.fullDisplayName}")
+                    } else if (pipelineStep == "stepsDeploy") {
+                        messageUtils.sendMessage(
+                                false,
+                                fullConfig.SHARE_PARAM.message,
+                                "准备重启：${fullConfig.SHARE_PARAM.appName}",
+                                "准备重启: ${currentBuild.fullDisplayName}"
+                        )
                         stepsDeploy.deploy(pipelineConfigItemMap)
                     }
                 }
-                echo "结束执行流程: ${it}"
+                echo "结束执行流程: ${pipelineStep}"
             }
             eBuildStatusType = EBuildStatusType.SUCCESS
         } catch (Exception e) {
@@ -100,20 +112,23 @@ def call(Map customConfig) {
             }
             throw e
         } finally {
-            if (ObjUtils.isNotEmpty(customConfig.SHARE_PARAM.message)) {
-                def messageTitle = ""
-                def messageContent = ""
+            Map notificationShareParam = fullConfig?.SHARE_PARAM instanceof Map
+                    ? fullConfig.SHARE_PARAM as Map
+                    : (customConfig?.SHARE_PARAM instanceof Map ? customConfig.SHARE_PARAM as Map : [:])
+            if (ObjUtils.isNotEmpty(notificationShareParam.message)) {
+                String messageTitle = ""
+                String messageContent = ""
                 if (eBuildStatusType == EBuildStatusType.SUCCESS) {
-                    messageTitle = "成功:${customConfig.SHARE_PARAM.appName}"
+                    messageTitle = "成功:${notificationShareParam.appName}"
                     messageContent = "发布成功: ${currentBuild.fullDisplayName}"
                 } else if (eBuildStatusType == EBuildStatusType.FAILED) {
-                    messageTitle = "失败:${customConfig.SHARE_PARAM.appName}"
+                    messageTitle = "失败:${notificationShareParam.appName}"
                     messageContent = "发布失败: ${currentBuild.fullDisplayName},异常信息: ${errMessage},构建日志:(${BUILD_URL}console)"
                 } else if (eBuildStatusType == EBuildStatusType.ABORTED) {
                     //发布终止
                 }
                 if (StrUtils.isNotBlank(messageTitle) && StrUtils.isNotBlank(messageContent)) {
-                    messageUtils.sendMessage(true,customConfig.SHARE_PARAM.message, messageTitle, messageContent)
+                    messageUtils.sendMessage(true, notificationShareParam.message, messageTitle, messageContent)
                 }
             }
             deleteDir()
@@ -137,34 +152,51 @@ def defaultConfigPath(EFileReadType eConfigType) {
 
 //合并配置customConfig >> extendConfig >> defaultConfig = fullConfig
 def mergeConfig(Map customConfig) {
-
-    def fullConfig = [:]
-    def extendConfig = [:]
-    def defaultConfig = [:]
-    //读取默认配置文件
-    defaultConfig = new ConfigUtils(this).readConfig(EFileReadType.RESOURCES, defaultConfigPath(EFileReadType.RESOURCES))
-    //读取继承配置文件
-    if (ObjUtils.isNotEmpty(customConfig.CONFIG_EXTEND) && ObjUtils.isNotEmpty(EFileReadType.get(customConfig.CONFIG_EXTEND.configFullPath))) {
-        extendConfig = new ConfigUtils(this).readConfigFromFullPath(customConfig.CONFIG_EXTEND.configFullPath)
+    Map defaultConfig = compatibleConfig(new ConfigUtils(this).readConfig(
+            EFileReadType.RESOURCES,
+            defaultConfigPath(EFileReadType.RESOURCES)
+    ))
+    Map extendConfig = [:]
+    String configFullPath = customConfig?.CONFIG_EXTEND?.configFullPath?.toString()
+    if (StrUtils.isNotBlank(configFullPath)) {
+        extendConfig = compatibleConfig(new ConfigUtils(this).readConfigFromFullPath(configFullPath))
     }
-    //合并自定义配置
-    fullConfig = MapUtils.merge([defaultConfig, extendConfig, customConfig])
+    Map normalizedCustomConfig = compatibleConfig(customConfig ?: [:])
 
+    Map fullConfig = MapUtils.merge([defaultConfig, extendConfig, normalizedCustomConfig])
     //根据自定义构建参数，修改配置
     fullConfig = ConfigMergeUtils.mergeParams(fullConfig, params)
 
-    compatibleConfig(fullConfig)
     return MapUtils.deepCopy(fullConfig)
 }
 
 //兼容旧的配置
-def compatibleConfig(Map customConfig) {
-    if (customConfig.DEPLOY_PIPELINE.stepsBuildMaven){
-        customConfig.DEPLOY_PIPELINE.stepsBuild = ["stepsBuildMaven":[],"enable":false]
-        customConfig.DEPLOY_PIPELINE.stepsBuild.stepsBuildMaven = customConfig.DEPLOY_PIPELINE.stepsBuildMaven
-        customConfig.DEPLOY_PIPELINE.stepsBuild.enable = true
+def compatibleConfig(Map config) {
+    Map normalizedConfig = MapUtils.deepCopy(config ?: [:])
+    if (!(normalizedConfig.DEPLOY_PIPELINE instanceof Map)) {
+        return normalizedConfig
     }
-    return customConfig
+
+    Map deployPipeline = normalizedConfig.DEPLOY_PIPELINE as Map
+    if (!deployPipeline.containsKey('stepsBuildMaven')) {
+        return normalizedConfig
+    }
+
+    def legacyStepsBuildMaven = deployPipeline.remove('stepsBuildMaven')
+    Map stepsBuild = deployPipeline.stepsBuild instanceof Map
+            ? MapUtils.deepCopy(deployPipeline.stepsBuild as Map)
+            : [:]
+
+    if (!stepsBuild.containsKey('stepsBuildMaven')) {
+        stepsBuild.stepsBuildMaven = MapUtils.deepCopy(legacyStepsBuildMaven)
+    }
+    if (!stepsBuild.containsKey('enable')) {
+        stepsBuild.enable = legacyStepsBuildMaven instanceof Map && legacyStepsBuildMaven.enable != null
+                ? legacyStepsBuildMaven.enable
+                : true
+    }
+    deployPipeline.stepsBuild = stepsBuild
+    return normalizedConfig
 }
 
 
