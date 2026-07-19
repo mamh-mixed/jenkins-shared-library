@@ -46,6 +46,7 @@ def call(Map customConfig) {
     /***初始化参数 结束**/
     //默认在同一个构建节点运行，如果需要在其他节点运行则单独写在node块中
     node(nodeBuildNodeList[0]) {
+        boolean primaryFailed = false
         try {
             //获取并合并配置
             fullConfig = mergeConfig(customConfig ?: [:])
@@ -85,6 +86,7 @@ def call(Map customConfig) {
             }
             eBuildStatusType = EBuildStatusType.SUCCESS
         } catch (Exception e) {
+            primaryFailed = true
             if (e.getClass().getName() == 'org.jenkinsci.plugins.workflow.steps.FlowInterruptedException') {
                 eBuildStatusType = EBuildStatusType.ABORTED
             } else {
@@ -93,26 +95,48 @@ def call(Map customConfig) {
             }
             throw e
         } finally {
-            Map notificationShareParam = fullConfig?.SHARE_PARAM instanceof Map
-                    ? fullConfig.SHARE_PARAM as Map
-                    : (customConfig?.SHARE_PARAM instanceof Map ? customConfig?.SHARE_PARAM as Map : [:])
-            if (ObjUtils.isNotEmpty(notificationShareParam.message)) {
-                String messageTitle = ""
-                String messageContent = ""
-                if (eBuildStatusType == EBuildStatusType.SUCCESS) {
-                    messageTitle = "成功:${notificationShareParam.appName}"
-                    messageContent = "发布成功: ${currentBuild.fullDisplayName}"
-                } else if (eBuildStatusType == EBuildStatusType.FAILED) {
-                    messageTitle = "失败:${notificationShareParam.appName}"
-                    messageContent = "发布失败: ${currentBuild.fullDisplayName},异常信息: ${errMessage},构建日志:(${BUILD_URL}console)"
-                } else if (eBuildStatusType == EBuildStatusType.ABORTED) {
-                    //发布终止
+            Exception secondaryFailure = null
+            try {
+                Map notificationShareParam = fullConfig?.SHARE_PARAM instanceof Map
+                        ? fullConfig.SHARE_PARAM as Map
+                        : (customConfig?.SHARE_PARAM instanceof Map ? customConfig?.SHARE_PARAM as Map : [:])
+                if (ObjUtils.isNotEmpty(notificationShareParam.message)) {
+                    String messageTitle = ""
+                    String messageContent = ""
+                    if (eBuildStatusType == EBuildStatusType.SUCCESS) {
+                        messageTitle = "成功:${notificationShareParam.appName}"
+                        messageContent = "发布成功: ${currentBuild.fullDisplayName}"
+                    } else if (eBuildStatusType == EBuildStatusType.FAILED) {
+                        messageTitle = "失败:${notificationShareParam.appName}"
+                        messageContent = "发布失败: ${currentBuild.fullDisplayName},异常信息: ${errMessage},构建日志:(${BUILD_URL}console)"
+                    } else if (eBuildStatusType == EBuildStatusType.ABORTED) {
+                        //发布终止
+                    }
+                    if (StrUtils.isNotBlank(messageTitle) && StrUtils.isNotBlank(messageContent)) {
+                        messageUtils.sendMessage(notificationShareParam.message, messageTitle, messageContent)
+                    }
                 }
-                if (StrUtils.isNotBlank(messageTitle) && StrUtils.isNotBlank(messageContent)) {
-                    messageUtils.sendMessage(notificationShareParam.message, messageTitle, messageContent)
+            } catch (Exception notificationFailure) {
+                secondaryFailure = notificationFailure
+                try {
+                    echo "结束通知失败: ${notificationFailure.message}"
+                } catch (Exception ignored) {
                 }
             }
-            deleteDir()
+            try {
+                deleteDir()
+            } catch (Exception cleanupFailure) {
+                if (secondaryFailure == null) {
+                    secondaryFailure = cleanupFailure
+                }
+                try {
+                    echo "工作区清理失败: ${cleanupFailure.message}"
+                } catch (Exception ignored) {
+                }
+            }
+            if (!primaryFailed && secondaryFailure != null) {
+                throw secondaryFailure
+            }
         }
     }
 }

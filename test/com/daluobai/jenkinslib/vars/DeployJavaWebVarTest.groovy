@@ -55,6 +55,48 @@ class DeployJavaWebVarTest extends DeployPipelineVarTestSupport {
     }
 
     @Test
+    void callPreservesInvalidExtensionErrorWhenFailureNotificationThrowsAndStillDeletesWorkspace() {
+        Script script = loadPipelineScript('vars/deployJavaWeb.groovy', [
+                'config/config.json': disabledJavaConfig()
+        ])
+        List<String> cleanupCalls = []
+        script.metaClass.deleteDir = { -> cleanupCalls.add('deleteDir') }
+        MessageUtils.metaClass.sendMessage = { boolean ignoredSimpleMessage, Object ignoredConfig, String ignoredTitle, String ignoredContent ->
+            throw new IllegalStateException('notification failed')
+        }
+
+        try {
+            IllegalArgumentException error = assertThrows(IllegalArgumentException.class) {
+                script.invokeMethod('call', [[
+                        CONFIG_EXTEND: [configFullPath: 'UNKNOWN:config/extend.json'],
+                        SHARE_PARAM : [appName: 'java-app', message: [wecom: [key: 'test']]]
+                ]] as Object[])
+            }
+
+            assertTrue(error.message.contains('配置类型为空'))
+            assertEquals(['deleteDir'], cleanupCalls)
+        } finally {
+            GroovySystem.metaClassRegistry.removeMetaClass(MessageUtils)
+        }
+    }
+
+    @Test
+    void callPreservesInvalidExtensionErrorWhenDeleteDirThrows() {
+        Script script = loadPipelineScript('vars/deployJavaWeb.groovy', [
+                'config/config.json': disabledJavaConfig()
+        ])
+        script.metaClass.deleteDir = { -> throw new IllegalStateException('deleteDir failed') }
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class) {
+            script.invokeMethod('call', [[
+                    CONFIG_EXTEND: [configFullPath: 'UNKNOWN:config/extend.json']
+            ]] as Object[])
+        }
+
+        assertTrue(error.message.contains('配置类型为空'))
+    }
+
+    @Test
     void mergeConfigNormalizesLegacyCustomBeforeApplyingSourcePrecedence() {
         Map defaultConfig = disabledJavaConfig()
         defaultConfig.DEPLOY_PIPELINE.stepsBuild = [
