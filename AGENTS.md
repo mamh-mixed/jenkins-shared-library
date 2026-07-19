@@ -51,6 +51,7 @@ This project is indexed by GitNexus as **jenkins-shared-library** (173 symbols, 
 <!-- gitnexus:end -->
 
 <!-- gitnexus-init-wiki:start -->
+
 ## GitNexus / Project Wiki
 
 This repository is indexed with GitNexus and has a project wiki generated from GitNexus MCP graph context.
@@ -58,9 +59,6 @@ This repository is indexed with GitNexus and has a project wiki generated from G
 For architecture questions, onboarding, debugging, refactoring, impact analysis,
 or cross-module changes, use GitNexus MCP/tools and the project wiki before
 making assumptions from plain text search.
-
-Project wiki entry:
-- `docs/wiki/README.md`
 
 How to use it:
 - Start with the wiki entry page for architecture and module overview.
@@ -73,3 +71,31 @@ How to use it:
 - This workflow does not retain GitNexus-generated or GitNexus-modified `CLAUDE.md` unless explicitly requested.
 - After major architecture, module-boundary, or core-flow changes, refresh the index and regenerate this wiki through GitNexus MCP.
 <!-- gitnexus-init-wiki:end -->
+
+<!-- obsidian:start -->
+
+# AGENTS.md
+
+## Obsidian 项目上下文
+
+Obsidian Vault 根目录：
+
+C:\Users\wuzhao\BaiduSyncdisk\workspace\Obsidian\Obsidian Vault
+
+关联 Obsidian 项目：
+
+C:\Users\wuzhao\BaiduSyncdisk\workspace\Obsidian\Obsidian Vault\projects\active\jenkins-pipeline
+
+处理本代码项目相关任务前，先读取：
+
+- C:\Users\wuzhao\BaiduSyncdisk\workspace\Obsidian\Obsidian Vault\AGENTS.md
+- C:\Users\wuzhao\BaiduSyncdisk\workspace\Obsidian\Obsidian Vault\projects\active\jenkins-pipeline\project.md
+- C:\Users\wuzhao\BaiduSyncdisk\workspace\Obsidian\Obsidian Vault\projects\active\jenkins-pipeline\tasks.md
+- C:\Users\wuzhao\BaiduSyncdisk\workspace\Obsidian\Obsidian Vault\projects\active\jenkins-pipeline\risks.md
+
+把 `project.md` 作为本项目的业务背景、目标、约束和运营上下文使用。  
+代码规范、运行命令、测试命令仍以本代码仓库的 `AGENTS.md` 为准。
+
+所有路径必须按 Windows 绝对路径解析。
+
+<!-- obsidian:end -->
