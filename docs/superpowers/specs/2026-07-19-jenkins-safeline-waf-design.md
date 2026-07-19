@@ -30,12 +30,12 @@
 - 不含查询参数的 URL 匹配下列任一组：
 
 ```text
-^(?:/job/[^/]+)+/(?:config\.xml|configSubmit)$
-^(?:/job/[^/]+)+/descriptorByName/org\.jenkinsci\.plugins\.workflow\.cps\.CpsFlowDefinition/(?:checkScript|checkScriptCompile)$
-^(?:/job/[^/]+)+/\d+/replay/(?:checkScript|checkScriptCompile|run)$
+^(?:/job/[^/]+)+/(?:config[.]xml|configSubmit)$
+^(?:/job/[^/]+)+/descriptorByName/org[.]jenkinsci[.]plugins[.]workflow[.]cps[.]CpsFlowDefinition/(?:checkScript|checkScriptCompile)$
+^(?:/job/[^/]+)+/[0-9]+/replay/(?:checkScript|checkScriptCompile|run)$
 ```
 
-正则兼容普通 Job 和 Folder 中的嵌套 Job。构建触发、登录、插件接口以及其他路径不进入白名单，继续由 WAF 检测。
+正则兼容普通 Job 和 Folder 中的嵌套 Job。使用 `[.]` 和 `[0-9]` 的无反斜杠写法，是因为当前雷池版本在保存策略时会移除一层反斜杠；该写法已通过策略回读和真实请求验证。构建触发、登录、插件接口以及其他路径不进入白名单，继续由 WAF 检测。
 
 ### 2. 雷池 HTTPS 配置
 
@@ -77,7 +77,7 @@ NPM 继续向 Jenkins 传递 HTTPS 外部协议和 443 端口。
 变更后执行以下验证：
 
 1. TLS 1.0/1.1 握手失败，TLS 1.2/1.3 握手成功。
-2. 外部 Jenkins HTTPS 返回单一 HSTS 响应头，HTTP 不产生循环重定向。
+2. 外部 Jenkins HTTPS 返回单一 HSTS 响应头；当前站点不监听 HTTP 80，HTTP 连接保持拒绝且不存在重定向循环。
 3. Jenkins URL 保持 HTTPS，反向代理监控不报警。
 4. `config.xml`、`configSubmit`、Pipeline `checkScript/checkScriptCompile` 和 Replay POST 能到达 Jenkins。
 5. 无效 Replay 请求由 Jenkins 返回业务错误且不触发构建；有效 Replay 能触发并完成测试构建。
