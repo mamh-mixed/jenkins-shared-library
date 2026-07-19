@@ -24,56 +24,92 @@ class StepsWeb implements Serializable {
 
     //发布
     def deploy(Map parameterMap) {
-        steps.echo "开始部署Web静态资源"
-        AssertUtils.notEmpty(parameterMap,"参数为空")
+        steps.echo '开始部署Web静态资源'
+        AssertUtils.notNull(parameterMap, '参数为空')
+        AssertUtils.notEmpty(parameterMap, '参数为空')
         def labels = parameterMap.labels
-        def pathRoot = parameterMap.pathRoot
-        def globalParameterMap = steps.globalParameterMap
-        def appName = globalParameterMap.SHARE_PARAM.appName
-        def archiveName = globalParameterMap.SHARE_PARAM.archiveName
-        def configStepsStorage = globalParameterMap.DEPLOY_PIPELINE.stepsStorage
-        //获取文件名后缀
-        def archiveSuffix = StrUtils.subAfter(archiveName, ".", true)
-        AssertUtils.notEmpty(labels,"labels为空")
+        String pathRoot = parameterMap.pathRoot?.toString()
+        Map globalParameterMap = steps.globalParameterMap as Map
+        String appName = globalParameterMap?.SHARE_PARAM?.appName?.toString()
+        String archiveName = globalParameterMap?.SHARE_PARAM?.archiveName?.toString()
+        Map configStepsStorage = globalParameterMap?.DEPLOY_PIPELINE?.stepsStorage as Map
+        String archiveType = configStepsStorage?.archiveType?.toString()
 
-        def backAppName = "app-" + DateUtils.format(new Date(), "yyyyMMddHHmmss") + "." + archiveSuffix
-//        steps.withCredentials([steps.sshUserPrivateKey(credentialsId: 'ssh-jenkins', keyFileVariable: 'SSH_KEY_PATH')]) {
-//            steps.sh "mkdir -p ~/.ssh && chmod 700 ~/.ssh && rm -f ~/.ssh/id_rsa && cp \${SSH_KEY_PATH} ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa"
-//        }
-        labels.each{ c ->
-            def label = c
+        AssertUtils.notEmpty(labels, 'labels为空')
+        AssertUtils.notBlank(pathRoot, 'pathRoot为空')
+        AssertUtils.notBlank(appName, 'appName为空')
+        AssertUtils.notBlank(archiveName, 'archiveName为空')
+        AssertUtils.isTrue(archiveType in ['ZIP', 'TAR'], 'archiveType仅支持ZIP或TAR')
+
+        String archiveSuffix = StrUtils.subAfter(archiveName, '.', true)
+        String backAppName = "app-${DateUtils.format(new Date(), 'yyyyMMddHHmmss')}.${archiveSuffix}"
+        String appRoot = "${pathRoot}/${appName}"
+
+        labels.each { label ->
             steps.echo "发布第一个标签:${label}"
             def nodeDeployNodeList = stepsJenkins.getNodeByLabel(label)
             steps.echo "获取到发布节点:${nodeDeployNodeList}"
             if (ObjUtils.isEmpty(nodeDeployNodeList)) {
                 steps.error '没有可用的发布节点'
             }
-            nodeDeployNodeList.each{ d ->
-                def nodeDeployNode = d
+            nodeDeployNodeList.each { nodeDeployNode ->
                 steps.echo "开始发布:${nodeDeployNode}"
                 steps.node(nodeDeployNode) {
-                    steps.unstash("appPackage")
-                    steps.sh "hostname"
-                    steps.sh "ls -l package"
-                    steps.sh "mkdir -p ${pathRoot}/${appName} && mkdir -p ${pathRoot}/${appName}/backup"
-                    //备份
-                    steps.sh "mv -f ${pathRoot}/${appName}/${archiveName} ${pathRoot}/${appName}/backup/${backAppName} || true"
-                    steps.dir("${pathRoot}/${appName}/backup/"){
-                        steps.sh "find . -mtime +3 -delete"
+                    steps.unstash('appPackage')
+                    steps.sh 'hostname'
+                    steps.sh 'ls -l package'
+                    steps.sh "mkdir -p '${appRoot}' '${appRoot}/backup'"
+                    steps.sh "mv -f '${appRoot}/${archiveName}' '${appRoot}/backup/${backAppName}' || true"
+                    steps.dir("${appRoot}/backup/") {
+                        steps.sh 'find . -mtime +3 -delete'
                     }
-                    //拷贝新的包到发布目录
-                    steps.sh "cp package/${archiveName} ${pathRoot}/${appName}"
-                    //创建一个 app 文件夹把包解压到里面
-                    steps.sh "rm -rf ${pathRoot}/${appName}/app || true"
-                    steps.sh "mkdir -p ${pathRoot}/${appName}/app"
-                    //切换到发布目录
-                    steps.dir("${pathRoot}/${appName}/"){
-                        if (configStepsStorage.archiveType == "ZIP"){
-                            steps.sh "unzip ${archiveName} -d app/"
-                        }else {
-                            steps.sh "tar -zxvf ${archiveName} -C app/"
+                    steps.sh "cp 'package/${archiveName}' '${appRoot}/${archiveName}'"
+
+                    steps.dir("${appRoot}/") {
+                        steps.sh '''
+set -eu
+rm -rf .app-next
+if [ -e .app-previous ]; then
+  if [ ! -e app ]; then
+    echo "检测到未恢复的回滚目录: $(pwd)/.app-previous" >&2
+    exit 1
+  fi
+  rm -rf .app-previous
+fi
+mkdir -p .app-next
+'''
+                        if (archiveType == 'ZIP') {
+                            steps.sh "unzip '${archiveName}' -d .app-next/"
+                        } else {
+                            steps.sh "tar -zxvf '${archiveName}' -C .app-next/"
                         }
-                        steps.sh "ls -l app"
+                        steps.sh '''
+set -eu
+if [ -z "$(find .app-next -mindepth 1 -print -quit)" ]; then
+  echo 'Web发布暂存目录为空: .app-next' >&2
+  exit 1
+fi
+'''
+                        steps.sh '''
+set -eu
+had_previous=0
+if [ -e app ]; then
+  mv app .app-previous
+  had_previous=1
+fi
+if mv .app-next app; then
+  rm -rf .app-previous
+else
+  switch_status=$?
+  if [ "$had_previous" -eq 1 ]; then
+    if ! mv .app-previous app; then
+      echo "发布切换失败，自动恢复也失败；旧版本保留在 $(pwd)/.app-previous" >&2
+    fi
+  fi
+  exit "$switch_status"
+fi
+'''
+                        steps.sh 'ls -l app'
                     }
                 }
             }
