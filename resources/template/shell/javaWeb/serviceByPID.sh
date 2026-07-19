@@ -2,7 +2,7 @@
 
 # 定义java服务的路径和名称
 SHELL_PATH=\$(readlink -f "\$0")
-SHELL_DIR=\$(dirname "\$path")
+SHELL_DIR=\$(dirname "\$SHELL_PATH")
 SERVICE_DIR=\$SHELL_DIR
 SERVICE_NAME=${appName}
 
