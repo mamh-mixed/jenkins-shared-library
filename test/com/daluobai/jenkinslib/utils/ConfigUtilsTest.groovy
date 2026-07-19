@@ -8,6 +8,7 @@ import java.net.InetSocketAddress
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertSame
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
@@ -57,6 +58,17 @@ class ConfigUtilsTest {
     }
 
     @Test
+    void optionalExistingResourceWithMissingTextValueStillThrows() {
+        FakeSteps steps = new FakeSteps(resources: [
+                'config/existing.json': '"No such library resource config/existing.json could be found."'
+        ])
+
+        assertThrows(Exception.class) {
+            new ConfigUtils(steps).readOptionalConfigFromFullPath('RESOURCES:config/existing.json')
+        }
+    }
+
+    @Test
     void optionalUnknownTypeStillThrows() {
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class) {
             new ConfigUtils(new FakeSteps())
@@ -75,6 +87,15 @@ class ConfigUtilsTest {
     }
 
     @Test
+    void optionalUrl200WithMissingTextValueStillThrows() {
+        withHttpResponse(200, '"HTTP请求失败，响应码: 404"') { String url ->
+            assertThrows(Exception.class) {
+                new ConfigUtils(new FakeSteps()).readOptionalConfigFromFullPath("URL:${url}")
+            }
+        }
+    }
+
+    @Test
     void optionalUrl500StillThrows() {
         withHttpStatus(500) { String url ->
             RuntimeException error = assertThrows(RuntimeException.class) {
@@ -85,14 +106,47 @@ class ConfigUtilsTest {
         }
     }
 
+    @Test
+    void optionalCyclicCauseTerminatesAndRethrows() {
+        GuardedCyclicCauseException failure = new GuardedCyclicCauseException('read failed')
+
+        RuntimeException thrown = assertThrows(RuntimeException.class) {
+            new ConfigUtils(new CyclicFailureSteps(failure))
+                    .readOptionalConfigFromFullPath('RESOURCES:config/error.json')
+        }
+
+        assertSame(failure, thrown)
+        assertEquals(1, failure.causeReads)
+    }
+
     private static void withHttpStatus(int status, Closure assertion) {
         HttpServer server = HttpServer.create(
-                new InetSocketAddress(InetAddress.loopbackAddress, 0),
+                new InetSocketAddress(InetAddress.getByName('127.0.0.1'), 0),
                 0
         )
         server.createContext('/config') { exchange ->
             exchange.sendResponseHeaders(status, -1)
             exchange.close()
+        }
+        server.start()
+        try {
+            assertion("http://127.0.0.1:${server.address.port}/config")
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    private static void withHttpResponse(int status, String body, Closure assertion) {
+        HttpServer server = HttpServer.create(
+                new InetSocketAddress(InetAddress.getByName('127.0.0.1'), 0),
+                0
+        )
+        server.createContext('/config') { exchange ->
+            byte[] response = body.getBytes('UTF-8')
+            exchange.sendResponseHeaders(status, response.length)
+            exchange.responseBody.withCloseable { stream ->
+                stream.write(response)
+            }
         }
         server.start()
         try {
@@ -127,6 +181,35 @@ class ConfigUtilsTest {
         String readFile(Map ignoredArgs) {
             hostFileRead = true
             return '{"host":true}'
+        }
+    }
+
+    static class CyclicFailureSteps {
+        RuntimeException failure
+
+        CyclicFailureSteps(RuntimeException failure) {
+            this.failure = failure
+        }
+
+        String libraryResource(String ignoredPath) {
+            throw failure
+        }
+    }
+
+    static class GuardedCyclicCauseException extends RuntimeException {
+        int causeReads
+
+        GuardedCyclicCauseException(String message) {
+            super(message)
+        }
+
+        @Override
+        synchronized Throwable getCause() {
+            causeReads++
+            if (causeReads > 1) {
+                throw new AssertionError('cyclic cause was traversed repeatedly')
+            }
+            return this
         }
     }
 }

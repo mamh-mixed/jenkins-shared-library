@@ -51,7 +51,7 @@ class ConfigUtils implements Serializable {
         try {
             return readConfig(eConfigType, path) as Map
         } catch (Exception error) {
-            if (isMissingOptionalConfig(eConfigType, error)) {
+            if (isMissingOptionalConfig(eConfigType, path, error)) {
                 return [:]
             }
             throw error
@@ -65,17 +65,17 @@ class ConfigUtils implements Serializable {
         return IoUtils.isFile(new File(path))
     }
 
-    private static boolean isMissingOptionalConfig(EFileReadType eConfigType, Throwable error) {
+    private static boolean isMissingOptionalConfig(EFileReadType eConfigType, String path, Throwable error) {
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<Throwable, Boolean>())
         Throwable current = error
-        while (current != null) {
+        while (current != null && visited.add(current)) {
             String message = current.message ?: ""
             if (eConfigType == EFileReadType.RESOURCES
-                    && message.contains("No such library resource")
-                    && message.contains("could be found")) {
+                    && message == "No such library resource ${path} could be found.") {
                 return true
             }
             if (eConfigType == EFileReadType.URL
-                    && message.contains("HTTP请求失败，响应码: 404")) {
+                    && message == "HTTP请求失败，响应码: 404") {
                 return true
             }
             current = current.cause
