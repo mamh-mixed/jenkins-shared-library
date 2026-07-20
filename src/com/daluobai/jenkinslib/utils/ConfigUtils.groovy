@@ -38,8 +38,13 @@ class ConfigUtils implements Serializable {
      */
     Map readOptionalConfigFromFullPath(String configFullPath) {
         AssertUtils.notBlank(configFullPath, "configFullPath为空")
-        String configType = StrUtils.subBefore(configFullPath, ":", false)
-        String path = StrUtils.subAfter(configFullPath, ":", false)
+        int separatorIndex = configFullPath.indexOf(':')
+        AssertUtils.isTrue(
+                separatorIndex > 0 && separatorIndex < configFullPath.length() - 1,
+                "configFullPath格式错误，应为TYPE:path"
+        )
+        String configType = configFullPath.substring(0, separatorIndex)
+        String path = configFullPath.substring(separatorIndex + 1)
         EFileReadType eConfigType = EFileReadType.get(configType)
         AssertUtils.notNull(eConfigType, "配置类型为空")
         AssertUtils.notBlank(path, "path为空")

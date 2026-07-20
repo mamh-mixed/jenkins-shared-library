@@ -79,6 +79,30 @@ class ConfigUtilsTest {
     }
 
     @Test
+    void optionalFullPathWithoutSeparatorStillThrows() {
+        ['RESOURCES', 'HOST_PATH'].each { String configFullPath ->
+            IllegalArgumentException error = assertThrows(IllegalArgumentException.class) {
+                new ConfigUtils(new FakeSteps())
+                        .readOptionalConfigFromFullPath(configFullPath)
+            }
+
+            assertTrue(error.message.contains('TYPE:path'))
+        }
+    }
+
+    @Test
+    void optionalFullPathWithEmptyTypeOrPathStillThrows() {
+        [':config/extend.json', 'RESOURCES:'].each { String configFullPath ->
+            IllegalArgumentException error = assertThrows(IllegalArgumentException.class) {
+                new ConfigUtils(new FakeSteps())
+                        .readOptionalConfigFromFullPath(configFullPath)
+            }
+
+            assertTrue(error.message.contains('TYPE:path'))
+        }
+    }
+
+    @Test
     void optionalUrl404ReturnsEmptyMap() {
         withHttpStatus(404) { String url ->
             Map result = new ConfigUtils(new FakeSteps()).readOptionalConfigFromFullPath("URL:${url}") as Map
