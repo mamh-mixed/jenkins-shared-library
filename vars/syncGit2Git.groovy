@@ -102,13 +102,14 @@ def defaultConfigPath(EFileReadType eConfigType) {
 def mergeConfig(Map customConfig) {
 
     def fullConfig = [:]
-    def extendConfig = [:]
+    Map extendConfig = [:]
     def defaultConfig = [:]
     //读取默认配置文件
     defaultConfig = new ConfigUtils(this).readConfig(EFileReadType.RESOURCES, defaultConfigPath(EFileReadType.RESOURCES))
     //读取继承配置文件
-    if (ObjUtils.isNotEmpty(customConfig.CONFIG_EXTEND) && ObjUtils.isNotEmpty(EFileReadType.get(customConfig.CONFIG_EXTEND.configFullPath))) {
-        extendConfig = new ConfigUtils(this).readConfigFromFullPath(customConfig.CONFIG_EXTEND.configFullPath)
+    String configFullPath = customConfig?.CONFIG_EXTEND?.configFullPath?.toString()
+    if (StrUtils.isNotBlank(configFullPath)) {
+        extendConfig = new ConfigUtils(this).readOptionalConfigFromFullPath(configFullPath)
     }
     //合并自定义配置
     fullConfig = MapUtils.merge([defaultConfig, extendConfig, customConfig])
